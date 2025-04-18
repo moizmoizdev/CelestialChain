@@ -78,4 +78,7 @@ run_demo.bat
 *.pdb
 
 # Dependencies
-packages/ 
+packages/
+
+# Archives
+*.zip 
