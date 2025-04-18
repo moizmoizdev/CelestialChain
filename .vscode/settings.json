@@ -1,6 +1,0 @@
-{
-    "files.associations": {
-        "executor": "cpp",
-        "io_context": "cpp"
-    }
-}

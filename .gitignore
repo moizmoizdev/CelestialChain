@@ -63,4 +63,19 @@ run_demo.bat
 
 # Database files
 *.db
-*.leveldb/ 
+*.leveldb/
+
+# Visual Studio files
+.vs/
+*.user
+*.filters
+*.vcxproj
+
+# Compiled files
+*.exe
+*.obj
+*.dll
+*.pdb
+
+# Dependencies
+packages/ 
