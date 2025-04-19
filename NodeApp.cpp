@@ -5,9 +5,11 @@
 #include <chrono>
 #include <vector>
 #include "NetworkNode.h"
+#include "BlockchainDB.h"
 #include "Blockchain.h"
 #include "wallet.h"
 #include "Types.h"
+#include <stdexcept>
 
 void clearScreen() {
 #ifdef _WIN32
@@ -83,9 +85,21 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Initialize blockchain and network manager
+    // Initialize blockchain 
     Blockchain blockchain(difficulty);
-    NetworkManager networkManager(blockchain, host, port, nodeType);
+    // INitializing Database
+    BlockchainDB db("./Storage");
+    if (!db.isOpen()) {
+    std::cerr << "Database error: " << db.getLastError() << std::endl;
+    exit(503);
+}
+    // Create a wallet for this node
+    std::cout << "Creating wallet for this node..." << std::endl;
+    Wallet nodeWallet;
+    std::cout << "Wallet created with address: " << nodeWallet.getAddress() << std::endl;
+    
+    // Initialize network manager with the blockchain and wallet
+    NetworkManager networkManager(blockchain, nodeWallet, host, port, nodeType);
 
     // Start network services
     try {
@@ -111,11 +125,14 @@ int main(int argc, char* argv[]) {
     std::cout << "Network services started and bootstrapped. Press Enter to continue..." << std::endl;
     std::cin.get();
 
+    // For mining operations, we'll need a vector of wallet pointers
+    std::vector<Wallet*> wallets = { &nodeWallet };
+
     int choice;
     do {
         clearScreen();
         if (nodeType == NodeType::FULL_NODE) printFullNodeMenu();
-        else                         printWalletNodeMenu();
+        else                                  printWalletNodeMenu();
 
         std::cin >> choice;
         if (std::cin.fail()) {
@@ -139,16 +156,15 @@ int main(int argc, char* argv[]) {
             case 3:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    std::vector<Wallet*> wallets = { &networkManager.getWallet() };
                     blockchain.mineBlock(wallets, nodeType);
                     networkManager.broadcastBlock(blockchain.getLatestBlock());
                 } else {
                     clearScreen();
                     std::cout << "Enter receiver: "; std::cin >> receiver;
                     std::cout << "Enter amount: ";   std::cin >> amount;
-                    Transaction tx("","",0);
-                    std::cout<<"Transaction is created"<<std::endl;
-                    networkManager.getWallet().sendMoney(receiver, amount, tx);
+                    Transaction tx("", "", 0);
+                    std::cout << "Transaction is created" << std::endl;
+                    nodeWallet.sendMoney(amount, receiver, tx);
                     blockchain.addTransaction(tx);
                     networkManager.broadcastTransaction(tx);
                 }
@@ -158,25 +174,25 @@ int main(int argc, char* argv[]) {
                     clearScreen();
                     std::cout << "Enter receiver: "; std::cin >> receiver;
                     std::cout << "Enter amount: ";   std::cin >> amount;
-                    Transaction tx("","",0);
-                    std::cout<<"Transaction is created"<<std::endl;
-                    networkManager.getWallet().sendMoney(receiver, amount, tx);
-                    std::cout<<"Money is sent"<<std::endl;
+                    Transaction tx("", "", 0);
+                    std::cout << "Transaction is created" << std::endl;
+                    nodeWallet.sendMoney(amount, receiver, tx);
+                    std::cout << "Money is sent" << std::endl;
                     blockchain.addTransaction(tx);
-                    std::cout<<"Transaction is added"<<std::endl;
+                    std::cout << "Transaction is added" << std::endl;
                     networkManager.broadcastTransaction(tx);
-                    std::cout<<"Transaction is broadcasted"<<std::endl;
+                    std::cout << "Transaction is broadcasted" << std::endl;
                 } else {
                     clearScreen();
-                    std::cout << "Address: " << networkManager.getWallet().getAddress() << std::endl;
-                    std::cout << "Balance: " << networkManager.getWallet().getBalance() << std::endl;
+                    std::cout << "Address: " << nodeWallet.getAddress() << std::endl;
+                    std::cout << "Balance: " << nodeWallet.getBalance() << std::endl;
                 }
                 break;
             case 5:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    std::cout << "Address: " << networkManager.getWallet().getAddress() << std::endl;
-                    std::cout << "Balance: " << networkManager.getWallet().getBalance() << std::endl;
+                    std::cout << "Address: " << nodeWallet.getAddress() << std::endl;
+                    std::cout << "Balance: " << nodeWallet.getBalance() << std::endl;
                 } else {
                     clearScreen();
                     std::cout << "Peer address: "; std::cin >> peerAddress;

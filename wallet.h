@@ -4,11 +4,6 @@
 #include <string>
 #include <vector>
 #include <openssl/ec.h>
-#include <openssl/ecdsa.h>
-#include <openssl/obj_mac.h>
-#include <openssl/sha.h>
-#include <openssl/bn.h>
-#include <openssl/evp.h>
 #include "crypto_utils.h"
 
 class Transaction;
@@ -17,6 +12,7 @@ class Wallet {
 private:
     EC_KEY* key_pair;
     std::string address;
+    std::string publicKey;
     double balance;
     
     void generateKeyPair();
@@ -28,14 +24,14 @@ public:
     ~Wallet();
     
     std::string getPublicKeyHex() const;
+    std::string getAddress() const;
+    double getBalance() const;
+    
     std::string signMessage(const std::string& message) const;
-    static bool verifySignature(const std::string& message, const std::string& signature, const std::string& publicKeyHex);
+    static bool verifySignature(const std::string& message, const std::string& signature, const std::string& publicKeyOrAddress);
     
-    void sendMoney(const std::string& recipient, double amount, Transaction& tx);
+    bool sendMoney(double amount, const std::string& receiverAddress, Transaction& transaction);
     void receiveMoney(double amount);
-    
-    std::string getAddress() const { return address; }
-    double getBalance() const { return balance; }
 };
 
 #endif // WALLET_H

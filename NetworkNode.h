@@ -104,7 +104,8 @@ private:
 // Class to manage the network functionality
 class NetworkManager {
 public:
-    NetworkManager(Blockchain& blockchain, const std::string& host, int port, NodeType type);
+    // Constructor now takes a reference to an external wallet
+    NetworkManager(Blockchain& blockchain, Wallet& wallet, const std::string& host, int port, NodeType type);
     ~NetworkManager();
     
     // Start the network services
@@ -162,7 +163,7 @@ private:
     void handlePeerConnection(Connection::pointer connection);
     
     Blockchain& blockchain;
-    Wallet wallet;
+    Wallet& wallet;          // Reference to an external wallet
     NodeType nodeType;
     std::string host;
     int port;

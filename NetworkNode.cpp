@@ -4,6 +4,7 @@
 #include <iostream>
 #include <sstream>
 #include <random>
+#include <stdexcept>
 
 // NetworkMessage implementation
 std::string NetworkMessage::serialize() const {
@@ -112,8 +113,9 @@ void Connection::handle_write(const boost::system::error_code& error) {
 }
 
 // NetworkManager implementation
-NetworkManager::NetworkManager(Blockchain& blockchain, const std::string& host, int port, NodeType type)
+NetworkManager::NetworkManager(Blockchain& blockchain, Wallet& wallet, const std::string& host, int port, NodeType type)
     : blockchain(blockchain),
+      wallet(wallet),
       nodeType(type),
       host(host),
       port(port),
@@ -124,18 +126,13 @@ NetworkManager::NetworkManager(Blockchain& blockchain, const std::string& host, 
     // Generate a unique node ID
     std::random_device rd;
     std::mt19937 gen(rd());
-    // std::uniform_int_distribution<> dis(1000, 9999);
-    // nodeId = "Node_" + std::to_string(dis(gen)) + "_" + std::to_string(time(nullptr));
-    
-    // std::cout << "Network node initialized with ID: " << nodeId << std::endl;
-    // std::cout << "Node type: " << (nodeType == NodeType::FULL_NODE ? "Full Node (with mining)" : "Wallet Node") << std::endl;
-    // std::cout << "Listening on " << host << ":" << port << std::endl;
-
     std::uniform_int_distribution<> dis(1000, 9999);
-      nodeId = "Node_" + std::to_string(dis(gen)) + "_" + std::to_string(time(nullptr));
-      std::cout << "Node ID: " << nodeId << "   Type: "
-                << (nodeType==NodeType::FULL_NODE?"Full":"Wallet")
-                << " @ " << host << ":" << port << std::endl;
+    nodeId = "Node_" + std::to_string(dis(gen)) + "_" + std::to_string(time(nullptr));
+    
+    std::cout << "Node ID: " << nodeId << "   Type: "
+              << (nodeType==NodeType::FULL_NODE?"Full":"Wallet")
+              << " @ " << host << ":" << port << std::endl;
+    std::cout << "Node wallet address: " << wallet.getAddress() << std::endl;
 }
 
 NetworkManager::~NetworkManager() {
@@ -282,6 +279,7 @@ void NetworkManager::broadcastTransaction(const Transaction& transaction) {
     // Convert the transaction to a serialized string
     std::stringstream ss;
     ss << transaction.sender << "|"
+       << transaction.senderPublicKey << "|"
        << transaction.receiver << "|"
        << transaction.amount << "|"
        << transaction.timestamp << "|"
@@ -328,6 +326,7 @@ void NetworkManager::broadcastBlock(const Block& block) {
     // Add each transaction to the serialized data
     for (const auto& tx : block.transactions) {
         ss << "|" << tx.sender << "|"
+           << tx.senderPublicKey << "|"
            << tx.receiver << "|"
            << tx.amount << "|"
            << tx.timestamp << "|"
@@ -424,16 +423,23 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             // parse the transaction data
             std::vector<std::string> parts;
             boost::split(parts, message.data, boost::is_any_of("|"));
-            if (parts.size() != 6) {
+            if (parts.size() != 7) {
                 std::cerr << "Invalid transaction data format" << std::endl;
                 break;
             }
         
             // Construct the Transaction object
-            Transaction tx(parts[0], parts[1], std::stoi(parts[2]));
-            tx.timestamp = std::stoul(parts[3]);
-            tx.hash      = parts[4];
-            tx.signature = parts[5];
+            // parts[0] = sender, parts[1] = senderPublicKey, parts[2] = receiver, parts[3] = amount
+            // parts[4] = timestamp, parts[5] = hash, parts[6] = signature
+            Transaction tx(
+                parts[0],                    // sender address
+                parts[1],                    // sender public key
+                parts[2],                    // receiver
+                std::stod(parts[3]),         // amount
+                parts[5],                    // hash
+                parts[6],                    // signature
+                std::stoul(parts[4])         // timestamp
+            );
         
             // 1) Validate the transaction
             if (!tx.isValid()) {
@@ -488,7 +494,7 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             int txCount    = std::stoi(parts[6]);
         
             // Check for enough data for all transactions
-            size_t required_size = 7 + static_cast<size_t>(txCount) * 6;
+            size_t required_size = 7 + static_cast<size_t>(txCount) * 7;
             if (parts.size() < required_size) {
                 std::cerr << "Invalid block data: missing transaction data" << std::endl;
                 break;
@@ -508,11 +514,16 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             // 2) Reconstruct the transactions
             std::vector<Transaction> transactions;
             for (int i = 0; i < txCount; ++i) {
-                int idx = 7 + i * 6;
-                Transaction tx(parts[idx], parts[idx+1], std::stod(parts[idx+2]));
-                tx.timestamp = std::stoul(parts[idx+3]);
-                tx.hash      = parts[idx+4];
-                tx.signature = parts[idx+5];
+                int idx = 7 + i * 7;
+                Transaction tx(
+                    parts[idx],                   // sender address
+                    parts[idx+1],                 // sender public key
+                    parts[idx+2],                 // receiver
+                    std::stod(parts[idx+3]),      // amount
+                    parts[idx+5],                 // hash
+                    parts[idx+6],                 // signature
+                    std::stoul(parts[idx+4])      // timestamp
+                );
                 transactions.push_back(tx);
             }
         

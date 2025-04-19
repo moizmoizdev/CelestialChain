@@ -10,7 +10,7 @@ Blockchain::Blockchain(int difficulty) : difficulty(difficulty) {
     genesisTransactions.push_back(genesisTx);
     
     // Previous hash for genesis block is 0
-    Block genesisBlock(0, genesisTransactions, "0", difficulty);
+    Block genesisBlock(0, genesisTransactions, "0x0", difficulty);
     genesisBlock.timestamp = GENESIS_TIMESTAMP;
     genesisBlock.nonce     = GENESIS_NONCE;
     genesisBlock.hash      = GENESIS_HASH;
@@ -45,12 +45,11 @@ void Blockchain::addTransaction(const Transaction& transaction) {
 Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
     // Check if this is a wallet node trying to mine
     if (nodeType == NodeType::WALLET_NODE) {
-        
-        throw "ERROR: Wallet nodes cannot mine blocks.";
+        throw std::runtime_error("ERROR: Wallet nodes cannot mine blocks.");
     }
     
     if (mempool.empty()) {
-        throw "No transactions in mempool to mine.";
+        throw std::runtime_error("No transactions in mempool to mine.");
     }
     
     std::cout << "Mining new block with " << mempool.size() << " transactions..." << std::endl;
@@ -67,7 +66,7 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
     for (const auto& tx : mempool) {
         // Find receiver wallet and update balance
         for (auto& wallet : wallets) {
-            if (wallet->getPublicKeyHex() == tx.receiver) {
+            if (wallet->getAddress() == tx.receiver) {
                 wallet->receiveMoney(tx.amount);
                 break;
             }
@@ -76,7 +75,7 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
     
     // Clear the mempool after mining
     mempool.clear();
-    return newBlock;
+    return chain.back();
 }
 
 const Block& Blockchain::getLatestBlock() const {
@@ -160,4 +159,4 @@ void Blockchain::printMempool() const {
 
 const time_t     Blockchain::GENESIS_TIMESTAMP = 1745026508;
 const int        Blockchain::GENESIS_NONCE     =  27701;
-const std::string Blockchain::GENESIS_HASH      = "0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80";
+const std::string Blockchain::GENESIS_HASH      = "0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80";

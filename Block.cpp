@@ -16,11 +16,11 @@ std::string Block::calculateHash() const {
     for (const auto& tx : transactions) {
         data += tx.sender + tx.receiver + std::to_string(tx.amount);
     }
-    return computeSHA256(data);
+    return "0x" + computeSHA256(data);
 }
 
 std::string Block::simpleHash(const std::string& str) const {
-    return computeSHA256(str);
+    return "0x" + computeSHA256(str);
 }
 
 std::string Block::mineBlock() {
@@ -32,7 +32,14 @@ std::string Block::mineBlock() {
                    // the hash with leading zeros is found
         nonce++;
         std::string hash = calculateHash();
-        if (hash.substr(0, difficulty) == target) {
+        
+        // Strip 0x prefix for difficulty check
+        std::string hashNoPrefix = hash;
+        if (hashNoPrefix.substr(0, 2) == "0x") {
+            hashNoPrefix = hashNoPrefix.substr(2);
+        }
+        
+        if (hashNoPrefix.substr(0, difficulty) == target) {
             return hash;
         }
     }

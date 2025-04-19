@@ -8,14 +8,17 @@ if not exist "blockchain_demo.exe" (
     exit /b 1
 )
 
-REM Start the first blockchain demo instance
-start "Blockchain Demo 1" cmd /k "blockchain_demo.exe --type full --port 8000"
+REM 
+start "Blockchain Demo 1" cmd /k "blockchain_node.exe --type full --port 8000"
 
-REM Wait a moment for the first instance to start
-timeout /t 2
+REM 
+start "Blockchain Demo 2" cmd /k "blockchain_node.exe --type full --port 8001"
 
-REM Start the second blockchain demo instance 
-start "Blockchain Demo 2" cmd /k "blockchain_node.exe --type wallet --port 8001"
+REM 
+start "Blockchain Demo 3" cmd /k "blockchain_node.exe --type full --port 8005"
+
+REM 
+start "Blockchain Demo 4" cmd /k "blockchain_node.exe --type full --port 8010"
 
 echo Started two blockchain demos.
 echo You can interact with each separately. 

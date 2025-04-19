@@ -79,6 +79,8 @@ run_demo.bat
 
 # Dependencies
 packages/
+#leveldb folder
+leveldb/
 
 # Archives
 *.zip 
