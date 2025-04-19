@@ -101,10 +101,9 @@ std::string signMessage(EC_KEY* key_pair, const std::string& message) {
 }
 
 bool verifySignature(const std::string& message, const std::string& signature, const std::string& publicKey) {
-    // Convert public key from hex to bytes
-    std::vector<unsigned char> pub_key_bytes = hexToBytes(publicKey);
     
-    // Create EC key from public key bytes
+    std::vector<unsigned char> pub_key_bytes = hexToBytes(publicKey);
+
     EC_KEY* pub_key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
     if (!pub_key) {
         return false;

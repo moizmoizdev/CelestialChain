@@ -44,20 +44,23 @@ bool Transaction::isValid() const {
     
     // Regular transaction validations
     if (sender.empty() || receiver.empty()) {
+        std::cout<<"Sender and receiver is false"<<std::endl;
         return false;
     }
     
     if (amount <= 0) {
+        std::cout<<"amount is false"<<std::endl;
         return false;
     }
     
     // Verify the hash matches
     if (hash != calculateHash()) {
+        std::cout<<"Hash is false"<<std::endl;
         return false;
     }
-    
     // Verify signature
-    return verifySignature();
+    bool b= verifySignature();
+    return b;
 }
 
 void Transaction::print() const {
