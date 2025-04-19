@@ -1,9 +1,9 @@
 CC = g++
 # Update this path to where your boost_1_87_0 folder is located
-BOOST_PATH = D:\algo\Socket Distributed Programming\boost_1_87_0
+BOOST_PATH = D:\Apps\boost_1_88_0
 # Add OpenSSL include path
-OPENSSL_PATH = D:\Distributed BlockChain\vcpkg\installed\x64-windows\include
-OPENSSL_LIB_PATH = D:\Distributed BlockChain\vcpkg\installed\x64-windows\lib
+OPENSSL_PATH = D:\Apps\OpenSSL\include
+OPENSSL_LIB_PATH = D:\Apps\OpenSSL\lib
 
 CFLAGS = -std=c++11 -Wall -I"$(BOOST_PATH)" -I"$(OPENSSL_PATH)"
 # If you have built Boost libraries, uncomment and update this

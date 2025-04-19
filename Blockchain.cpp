@@ -11,25 +11,38 @@ Blockchain::Blockchain(int difficulty) : difficulty(difficulty) {
     
     // Previous hash for genesis block is 0
     Block genesisBlock(0, genesisTransactions, "0", difficulty);
+    genesisBlock.timestamp = GENESIS_TIMESTAMP;
+    genesisBlock.nonce     = GENESIS_NONCE;
+    genesisBlock.hash      = GENESIS_HASH;
     chain.push_back(genesisBlock);
     
     std::cout << "Blockchain initialized with genesis block: " << genesisBlock.hash << std::endl;
 }
-
+// Mine and add a brand‐new block locally
 void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
     Block newBlock(chain.size(), transactions, getLatestBlock().hash, difficulty);
     chain.push_back(newBlock);
-    
     std::cout << "Block #" << newBlock.blockNumber << " added to the blockchain." << std::endl;
     std::cout << "Hash: " << newBlock.hash << std::endl;
 }
 
+// ** NEW ** Push a block received from the network (no re‑mining)
+void Blockchain::addExistingBlock(const Block& block) {
+    // Optionally validate: block.previousHash == getLatestBlock().hash
+    chain.push_back(block);
+    mempool.clear();
+    std::cout << "Block #" << block.blockNumber << " added to the blockchain." << std::endl;
+}
+
 void Blockchain::addTransaction(const Transaction& transaction) {
+    for (auto& old : mempool) {
+        if (old.hash == transaction.hash) return;
+    }
     mempool.push_back(transaction);
     std::cout << "Transaction added to mempool: " << transaction.sender << " -> " << transaction.receiver << ": " << transaction.amount << std::endl;
 }
 
-Block& Blockchain::mineBlock(std::vector<Wallet>& wallets, NodeType nodeType) {
+Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
     // Check if this is a wallet node trying to mine
     if (nodeType == NodeType::WALLET_NODE) {
         
@@ -54,8 +67,8 @@ Block& Blockchain::mineBlock(std::vector<Wallet>& wallets, NodeType nodeType) {
     for (const auto& tx : mempool) {
         // Find receiver wallet and update balance
         for (auto& wallet : wallets) {
-            if (wallet.getPublicKeyHex() == tx.receiver) {
-                wallet.receiveMoney(tx.amount);
+            if (wallet->getPublicKeyHex() == tx.receiver) {
+                wallet->receiveMoney(tx.amount);
                 break;
             }
         }
@@ -144,3 +157,7 @@ void Blockchain::printMempool() const {
         std::cout << "  - " << tx.sender << " -> " << tx.receiver << ": " << tx.amount << std::endl;
     }
 } 
+
+const time_t     Blockchain::GENESIS_TIMESTAMP = 1745026508;
+const int        Blockchain::GENESIS_NONCE     =  27701;
+const std::string Blockchain::GENESIS_HASH      = "0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80";

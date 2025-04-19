@@ -9,6 +9,7 @@
 #include <openssl/sha.h>
 #include <openssl/bn.h>
 #include <openssl/evp.h>
+#include "crypto_utils.h"
 
 class Transaction;
 
