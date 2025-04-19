@@ -13,17 +13,14 @@ private:
     std::vector<Block> chain;
     std::vector<Transaction> mempool;
     int difficulty;
+    
 
-    static const time_t GENESIS_TIMESTAMP;
-    static const int     GENESIS_NONCE;
-    static const std::string GENESIS_HASH;
 public:
     Blockchain(int difficulty = 4);
     
     void addBlock(const std::vector<Transaction>& transactions);
-    void addExistingBlock(const Block& block);
     void addTransaction(const Transaction& transaction);
-    Block& mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType = NodeType::FULL_NODE);
+    Block& mineBlock(std::vector<Wallet>& wallets, NodeType nodeType = NodeType::FULL_NODE);
     
     const Block& getLatestBlock() const;
     size_t getChainSize() const;

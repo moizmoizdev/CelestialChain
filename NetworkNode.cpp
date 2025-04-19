@@ -124,18 +124,12 @@ NetworkManager::NetworkManager(Blockchain& blockchain, const std::string& host, 
     // Generate a unique node ID
     std::random_device rd;
     std::mt19937 gen(rd());
-    // std::uniform_int_distribution<> dis(1000, 9999);
-    // nodeId = "Node_" + std::to_string(dis(gen)) + "_" + std::to_string(time(nullptr));
-    
-    // std::cout << "Network node initialized with ID: " << nodeId << std::endl;
-    // std::cout << "Node type: " << (nodeType == NodeType::FULL_NODE ? "Full Node (with mining)" : "Wallet Node") << std::endl;
-    // std::cout << "Listening on " << host << ":" << port << std::endl;
-
     std::uniform_int_distribution<> dis(1000, 9999);
-      nodeId = "Node_" + std::to_string(dis(gen)) + "_" + std::to_string(time(nullptr));
-      std::cout << "Node ID: " << nodeId << "   Type: "
-                << (nodeType==NodeType::FULL_NODE?"Full":"Wallet")
-                << " @ " << host << ":" << port << std::endl;
+    nodeId = "Node_" + std::to_string(dis(gen)) + "_" + std::to_string(time(nullptr));
+    
+    std::cout << "Network node initialized with ID: " << nodeId << std::endl;
+    std::cout << "Node type: " << (nodeType == NodeType::FULL_NODE ? "Full Node (with mining)" : "Wallet Node") << std::endl;
+    std::cout << "Listening on " << host << ":" << port << std::endl;
 }
 
 NetworkManager::~NetworkManager() {
@@ -155,7 +149,7 @@ void NetworkManager::start() {
         try {
             io_context.run();
         } catch (const std::exception& e) {
-            std::cerr << "IO error: "<<e.what()<<std::endl;
+            std::cerr << "Network error: " << e.what() << std::endl;
         }
     });
     
@@ -212,10 +206,9 @@ void NetworkManager::handleAccept(Connection::pointer new_connection, const boos
         }
         
         // Send a handshake message
-        std::string type_str = (nodeType==NodeType::FULL_NODE?"FULL_NODE":"WALLET_NODE");
-        std::string payload  = type_str + "|" + std::to_string(port);
-        NetworkMessage hs(MessageType::HANDSHAKE, nodeId, payload);
-        new_connection->send(hs);
+        std::string type_str = (nodeType == NodeType::FULL_NODE) ? "FULL_NODE" : "WALLET_NODE";
+        NetworkMessage handshake(MessageType::HANDSHAKE, nodeId, type_str);
+        new_connection->send(handshake);
     }
     
     // Continue accepting new connections
@@ -258,10 +251,9 @@ bool NetworkManager::connectToPeer(const std::string& address, int peer_port) {
         }
         
         // Send a handshake message
-        std::string type_str = (nodeType==NodeType::FULL_NODE?"FULL_NODE":"WALLET_NODE");
-        std::string payload  = type_str + "|" + std::to_string(port);
-        NetworkMessage hs(MessageType::HANDSHAKE, nodeId, payload);
-        connection->send(hs);
+        std::string type_str = (nodeType == NodeType::FULL_NODE) ? "FULL_NODE" : "WALLET_NODE";
+        NetworkMessage handshake(MessageType::HANDSHAKE, nodeId, type_str);
+        connection->send(handshake);
         std::cout << "Sent handshake message to peer" << std::endl;
         
         return true;
@@ -373,18 +365,13 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
     switch (message.type) {
         case MessageType::HANDSHAKE: {
             // Add the peer to our peer list
-            // split the payload
-            std::vector<std::string> parts;
-            boost::split(parts, message.data, boost::is_any_of("|"));
-
-            // parts[0] == "FULL_NODE" or "WALLET_NODE"
-            // parts[1] == listening port
-            NodeType peer_type = (parts[0] == "FULL_NODE") ? NodeType::FULL_NODE : NodeType::WALLET_NODE;
-            int peer_listen_port = std::stoi(parts[1]);
-
             std::string peer_address = connection->socket().remote_endpoint().address().to_string();
-            Peer new_peer(peer_address, peer_listen_port, peer_type, message.sender);
-
+            int peer_port = connection->socket().remote_endpoint().port();
+            
+            NodeType peer_type = (message.data == "FULL_NODE") ? NodeType::FULL_NODE : NodeType::WALLET_NODE;
+            
+            Peer new_peer(peer_address, peer_port, peer_type, message.sender);
+            
             bool peer_already_known = false;
             {
                 std::lock_guard<std::mutex> lock(peers_mutex);
@@ -397,7 +384,7 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             }
             
             std::cout << "Handshake completed with peer " << message.sender << " at " 
-                      << peer_address << ":" << peer_listen_port << " (" 
+                      << peer_address << ":" << peer_port << " (" 
                       << (peer_type == NodeType::FULL_NODE ? "Full Node" : "Wallet Node") << ")" 
                       << (peer_already_known ? " (already known)" : " (new peer)") << std::endl;
             
@@ -420,126 +407,105 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             std::cout << "Sent peer list to " << message.sender << " with " << peers.size() << " peers" << std::endl;
             break;
         }
+        
         case MessageType::TRANSACTION: {
-            // parse the transaction data
+            // Parse the transaction data
             std::vector<std::string> parts;
             boost::split(parts, message.data, boost::is_any_of("|"));
+            
             if (parts.size() != 6) {
                 std::cerr << "Invalid transaction data format" << std::endl;
                 break;
             }
-        
-            // Construct the Transaction object
+            
+            // Create a new transaction
             Transaction tx(parts[0], parts[1], std::stoi(parts[2]));
             tx.timestamp = std::stoul(parts[3]);
-            tx.hash      = parts[4];
+            tx.hash = parts[4];
             tx.signature = parts[5];
-        
-            // 1) Validate the transaction
+            
+            // Validate the transaction
             if (!tx.isValid()) {
                 std::cerr << "Received invalid transaction from " << message.sender << std::endl;
                 break;
             }
-        
-            // 2) Deduplicate: if we've seen this hash before, do nothing
-            {
-                const auto& pool = blockchain.getMempool();
-                bool seen = std::any_of(pool.begin(), pool.end(),
-                    [&](const Transaction& old){ return old.hash == tx.hash; });
-                if (seen) {
-                    // already processed—drop it
-                    break;
-                }
-            }
-        
-            // 3) Add it to our mempool
+            
+            // Add to the blockchain mempool
             blockchain.addTransaction(tx);
-        
-            // 4) Relay it on to all other peers (except the one who sent it)
-            {
-                std::lock_guard<std::mutex> lock(connections_mutex);
-                for (auto& conn : connections) {
-                    if (conn != connection) {
-                        conn->send(message);
-                    }
+            
+            // Relay the transaction to other peers (except the sender)
+            std::lock_guard<std::mutex> lock(connections_mutex);
+            for (auto& conn : connections) {
+                if (conn != connection) {
+                    conn->send(message);
                 }
             }
-        
-            std::cout << "Added and relayed transaction from "
-                      << tx.sender << " to " << tx.receiver
-                      << " for " << tx.amount << std::endl;
+            
+            std::cout << "Added and relayed transaction from " << tx.sender << " to " << tx.receiver << " for " << tx.amount << std::endl;
             break;
         }
+        
         case MessageType::BLOCK: {
-            // parse the block data
+            // Parse the block data
             std::vector<std::string> parts;
             boost::split(parts, message.data, boost::is_any_of("|"));
+            
             if (parts.size() < 7) {
                 std::cerr << "Invalid block data format" << std::endl;
                 break;
             }
-        
+            
             int blockNumber = std::stoi(parts[0]);
-            time_t timestamp = static_cast<time_t>(std::stoul(parts[1]));
+            time_t timestamp = std::stoul(parts[1]);
             std::string previousHash = parts[2];
-            std::string hash         = parts[3];
-            int nonce      = std::stoi(parts[4]);
+            std::string hash = parts[3];
+            int nonce = std::stoi(parts[4]);
             int difficulty = std::stoi(parts[5]);
-            int txCount    = std::stoi(parts[6]);
-        
-            // Check for enough data for all transactions
+            int txCount = std::stoi(parts[6]);
+            
+            // Check if we have at least enough data for all transactions
             size_t required_size = 7 + static_cast<size_t>(txCount) * 6;
             if (parts.size() < required_size) {
                 std::cerr << "Invalid block data: missing transaction data" << std::endl;
                 break;
             }
-        
-            // 1) De‑duplicate: skip if we already have this hash
-            {
-                const auto& chain = blockchain.getChain();
-                auto it = std::find_if(chain.begin(), chain.end(),
-                    [&](const Block& b){ return b.hash == hash; });
-                if (it != chain.end()) {
-                    // already added
-                    break;
-                }
-            }
-        
-            // 2) Reconstruct the transactions
+            
+            // Create transactions from the data
             std::vector<Transaction> transactions;
             for (int i = 0; i < txCount; ++i) {
-                int idx = 7 + i * 6;
-                Transaction tx(parts[idx], parts[idx+1], std::stod(parts[idx+2]));
-                tx.timestamp = std::stoul(parts[idx+3]);
-                tx.hash      = parts[idx+4];
-                tx.signature = parts[idx+5];
+                int base_idx = 7 + i * 6;
+                
+                Transaction tx(parts[base_idx], parts[base_idx + 1], std::stoi(parts[base_idx + 2]));
+                tx.timestamp = std::stoul(parts[base_idx + 3]);
+                tx.hash = parts[base_idx + 4];
+                tx.signature = parts[base_idx + 5];
+                
                 transactions.push_back(tx);
             }
-        
-            // 3) Create a block stub and set its fields
+            
+            // Create a new block - without mining it
             Block block(blockNumber, transactions, previousHash, difficulty);
             block.timestamp = timestamp;
-            block.nonce     = nonce;
-            block.hash      = hash;
-        
-            // 4) Add to our chain
-            blockchain.addExistingBlock(block);  // or a new addExistingBlock method
-        
-            // 5) Relay to other peers, except the sender
-            {
-                std::lock_guard<std::mutex> lock(connections_mutex);
-                for (auto& conn : connections) {
-                    if (conn != connection) {
-                        conn->send(message);
-                    }
+            block.nonce = nonce;
+            block.hash = hash;
+            
+            // Add the block to the blockchain
+            // This would typically involve validation logic
+            // For simplicity, we'll add it directly
+            blockchain.addBlock(transactions);
+            
+            // Relay the block to other peers (except the sender)
+            std::lock_guard<std::mutex> lock(connections_mutex);
+            for (auto& conn : connections) {
+                if (conn != connection) {
+                    conn->send(message);
                 }
             }
-        
-            std::cout << "Added and relayed block #"
-                      << blockNumber << " with "
-                      << txCount << " transactions" << std::endl;
+            
+            std::cout << "Added and relayed block #" << blockNumber << " with " << txCount << " transactions" << std::endl;
             break;
-        } 
+        }
+        
         case MessageType::CHAIN_REQUEST: {
             // Only full nodes should respond to blockchain requests
             if (nodeType != NodeType::FULL_NODE) {
@@ -578,6 +544,7 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             std::cout << "Sent blockchain (" << chain.size() << " blocks) to " << message.sender << std::endl;
             break;
         }
+        
         case MessageType::CHAIN_RESPONSE: {
             // Parse the blockchain data
             std::vector<std::string> parts;
