@@ -13,25 +13,28 @@ A complete implementation of a blockchain in C++ that demonstrates the core conc
 - Validate the integrity of the blockchain
 - Configure mining difficulty
 - Networking with peer-to-peer connections
+- Persistent storage using LevelDB
 - Support for two types of nodes:
   - Full Nodes: Complete blockchain functionality with mining capabilities
   - Wallet Nodes: Transaction creation and wallet management without mining
 
 ## Requirements
 
-- C++11 compiler
+- C++17 compiler (for structured bindings)
 - Boost libraries (system, thread)
 - pthread
+- LevelDB
+- OpenSSL
 
 ## Building
 
 ```bash
-# Install Boost libraries
+# Install dependencies
 # On Ubuntu:
-sudo apt-get install libboost-all-dev
+sudo apt-get install libboost-all-dev libleveldb-dev libssl-dev
 
 # On Windows with MSYS2/MinGW:
-pacman -S mingw-w64-x86_64-boost
+pacman -S mingw-w64-x86_64-boost mingw-w64-x64-leveldb mingw-w64-x64-openssl
 
 # Compile the project
 make
@@ -71,6 +74,7 @@ Available options:
 - `Transaction.h/cpp` - Implements a transaction model with sender, receiver, and amount
 - `wallet.h/cpp` - Implements a wallet system for managing keys and balances
 - `sha.h/cpp` - Provides hash functionality for the blockchain
+- `BlockchainDB.h/cpp` - Implements persistent storage using LevelDB
 
 ## Networking Architecture
 
@@ -126,3 +130,30 @@ Communication between nodes is done using a simple message protocol over TCP/IP.
    - New transactions and blocks are broadcast to all peers
    - Peers relay valid transactions and blocks to their peers
    - Nodes can request the blockchain from peers 
+
+6. **Storage**:
+   - Each node maintains its own database using LevelDB
+   - Database files are stored in unique directories based on host:port combination
+   - Blockchain state is persisted between executions
+   - Automatic database directory creation
+
+## Running Multiple Nodes
+
+Each node uses a separate database directory based on its host and port combination. This allows multiple nodes to run simultaneously on the same machine without conflicts. The node application creates these directories automatically.
+
+To start a network of nodes:
+```bash
+# Start the first full node on port 8000
+./blockchain_node --port 8000 --type full
+
+# In a separate terminal, start another full node on port 8001
+./blockchain_node --port 8001 --type full
+
+# In a third terminal, start a wallet node on port 8002
+./blockchain_node --port 8002 --type wallet
+```
+
+Or use the batch script:
+```bash
+./run_network.bat
+``` 
