@@ -5,6 +5,7 @@
 #include <vector>
 #include <openssl/ec.h>
 #include "crypto_utils.h"
+#include "BlockchainDB.h"
 
 class Transaction;
 
@@ -14,13 +15,20 @@ private:
     std::string address;
     std::string publicKey;
     double balance;
+    BlockchainDB* db;  // Database connection for transactions
     
     void generateKeyPair();
     std::string deriveAddress(const std::string& pubKey) const;
     std::string sign(const std::string& message) const;
     
+    // INI file operations
+    bool saveToIniFile() const;
+    bool loadFromIniFile(const std::string& walletAddress);
+    std::string getIniFilePath() const;
+    
 public:
     Wallet();
+    Wallet(BlockchainDB* database);  // Constructor with database
     ~Wallet();
     
     std::string getPublicKeyHex() const;
@@ -32,6 +40,11 @@ public:
     
     bool sendMoney(double amount, const std::string& receiverAddress, Transaction& transaction);
     void receiveMoney(double amount);
+
+    // Database operations (for transactions only)
+    void setDatabase(BlockchainDB* database);
+    bool updateBalance();
+    std::vector<Transaction> getTransactionHistory() const;
 };
 
 #endif // WALLET_H

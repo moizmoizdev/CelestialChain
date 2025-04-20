@@ -1,5 +1,4 @@
 #include "NetworkNode.h"
-#include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 #include <iostream>
 #include <sstream>
@@ -162,21 +161,60 @@ void NetworkManager::start() {
 void NetworkManager::stop() {
     if (!running) return;
     
+    std::cout << "Shutting down network manager..." << std::endl;
+    
     running = false;
     
+    // Close all connections first
+    {
+        std::lock_guard<std::mutex> lock(connections_mutex);
+        std::cout << "Closing " << connections.size() << " peer connections..." << std::endl;
+        // Close each connection socket
+        for (auto& connection : connections) {
+            try {
+                boost::system::error_code ec;
+                connection->socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+                if (ec) {
+                    std::cerr << "Error shutting down socket: " << ec.message() << std::endl;
+                }
+                connection->socket().close(ec);
+                if (ec) {
+                    std::cerr << "Error closing socket: " << ec.message() << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Error during socket shutdown: " << e.what() << std::endl;
+            }
+        }
+        connections.clear();
+    }
+    
+    // Try to cancel any pending operations
+    try {
+        acceptor.close();
+    } catch (const std::exception& e) {
+        std::cerr << "Error closing acceptor: " << e.what() << std::endl;
+    }
+    
     // Stop the io_context
-    io_context.stop();
+    try {
+        io_context.stop();
+    } catch (const std::exception& e) {
+        std::cerr << "Error stopping IO context: " << e.what() << std::endl;
+    }
     
     // Wait for the service thread to finish
     if (service_thread.joinable()) {
+        std::cout << "Waiting for network thread to finish..." << std::endl;
         service_thread.join();
     }
     
-    // Close all connections
-    std::lock_guard<std::mutex> lock(connections_mutex);
-    connections.clear();
+    // Clear peers
+    {
+        std::lock_guard<std::mutex> lock(peers_mutex);
+        peers.clear();
+    }
     
-    std::cout << "Network services stopped." << std::endl;
+    std::cout << "Network services stopped successfully." << std::endl;
 }
 
 void NetworkManager::startAccept() {
@@ -575,6 +613,7 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
                 
                 for (const auto& tx : block.transactions) {
                     ss << "|" << tx.sender << "|"
+                       << tx.senderPublicKey << "|"
                        << tx.receiver << "|"
                        << tx.amount << "|"
                        << tx.timestamp << "|"
@@ -602,8 +641,68 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             int blockCount = std::stoi(parts[0]);
             std::cout << "Received blockchain with " << blockCount << " blocks from " << message.sender << std::endl;
             
-            // TODO: Parse and validate the blockchain
-            // For simplicity, we'll assume it's valid
+            // This is where we would actually parse and add the blockchain data
+            // For a complete implementation, we would:
+            // 1. Parse each block and its transactions
+            // 2. Validate the chain
+            // 3. Replace our chain if the received one is valid and longer
+            
+            // Sample implementation for future enhancement:
+            /*
+            std::vector<Block> receivedChain;
+            int currentPos = 1;
+            
+            for (int i = 0; i < blockCount; i++) {
+                if (currentPos + 6 >= parts.size()) {
+                    std::cerr << "Invalid blockchain data: missing block data" << std::endl;
+                    break;
+                }
+                
+                int blockNumber = std::stoi(parts[currentPos++]);
+                time_t timestamp = std::stoul(parts[currentPos++]);
+                std::string previousHash = parts[currentPos++];
+                std::string hash = parts[currentPos++];
+                int nonce = std::stoi(parts[currentPos++]);
+                int difficulty = std::stoi(parts[currentPos++]);
+                int txCount = std::stoi(parts[currentPos++]);
+                
+                std::vector<Transaction> transactions;
+                
+                for (int j = 0; j < txCount; j++) {
+                    if (currentPos + 6 >= parts.size()) {
+                        std::cerr << "Invalid blockchain data: missing transaction data" << std::endl;
+                        break;
+                    }
+                    
+                    std::string sender = parts[currentPos++];
+                    std::string senderPublicKey = parts[currentPos++];
+                    std::string receiver = parts[currentPos++];
+                    double amount = std::stod(parts[currentPos++]);
+                    unsigned long txTimestamp = std::stoul(parts[currentPos++]);
+                    std::string txHash = parts[currentPos++];
+                    std::string signature = parts[currentPos++];
+                    
+                    Transaction tx(sender, senderPublicKey, receiver, amount, txHash, signature, txTimestamp);
+                    transactions.push_back(tx);
+                }
+                
+                Block block(blockNumber, transactions, previousHash, difficulty);
+                block.timestamp = timestamp;
+                block.nonce = nonce;
+                block.hash = hash;
+                
+                receivedChain.push_back(block);
+            }
+            
+            // Validate and potentially replace our chain
+            if (!receivedChain.empty() && receivedChain.size() > blockchain.getChain().size()) {
+                // Additional validation would be done here
+                // For now, just replace the chain
+                for (const auto& block : receivedChain) {
+                    blockchain.addExistingBlock(block);
+                }
+            }
+            */
             break;
         }
         

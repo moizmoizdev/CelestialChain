@@ -22,14 +22,25 @@ Blockchain::Blockchain(int difficulty) : difficulty(difficulty) {
 void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
     Block newBlock(chain.size(), transactions, getLatestBlock().hash, difficulty);
     chain.push_back(newBlock);
+    
+    // Persist the block to database
+    if (db && !db->saveBlock(newBlock)) {
+        std::cerr << "Failed to save block to database: " << db->getLastError() << std::endl;
+    }
+    
     std::cout << "Block #" << newBlock.blockNumber << " added to the blockchain." << std::endl;
     std::cout << "Hash: " << newBlock.hash << std::endl;
 }
 
 // ** NEW ** Push a block received from the network (no re‑mining)
 void Blockchain::addExistingBlock(const Block& block) {
-    // Optionally validate: block.previousHash == getLatestBlock().hash
     chain.push_back(block);
+    
+    // Persist the block to database
+    if (db && !db->saveBlock(block)) {
+        std::cerr << "Failed to save block to database: " << db->getLastError() << std::endl;
+    }
+    
     mempool.clear();
     std::cout << "Block #" << block.blockNumber << " added to the blockchain." << std::endl;
 }
@@ -38,11 +49,20 @@ void Blockchain::addTransaction(const Transaction& transaction) {
     for (auto& old : mempool) {
         if (old.hash == transaction.hash) return;
     }
+    
+    // Add to mempool
     mempool.push_back(transaction);
-    std::cout << "Transaction added to mempool: " << transaction.sender << " -> " << transaction.receiver << ": " << transaction.amount << std::endl;
+    
+    // Persist transaction to database
+    if (db && !db->saveTransaction(transaction)) {
+        std::cerr << "Failed to save transaction to database: " << db->getLastError() << std::endl;
+    }
+    
+    std::cout << "Transaction added to mempool: " << transaction.sender << " -> " 
+              << transaction.receiver << ": " << transaction.amount << std::endl;
 }
 
-Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
+Block& Blockchain::mineBlock(Wallet& wallet, NodeType nodeType) {
     // Check if this is a wallet node trying to mine
     if (nodeType == NodeType::WALLET_NODE) {
         throw std::runtime_error("ERROR: Wallet nodes cannot mine blocks.");
@@ -62,14 +82,11 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
     std::cout << "Hash: " << newBlock.hash << std::endl;
     std::cout << "Nonce: " << newBlock.nonce << std::endl;
     
-    // Process transactions for wallet balances
+    // Process transactions for wallet balance
     for (const auto& tx : mempool) {
-        // Find receiver wallet and update balance
-        for (auto& wallet : wallets) {
-            if (wallet->getAddress() == tx.receiver) {
-                wallet->receiveMoney(tx.amount);
-                break;
-            }
+        // Update wallet balance if it's the receiver
+        if (wallet.getAddress() == tx.receiver) {
+            wallet.receiveMoney(tx.amount);
         }
     }
     
@@ -155,7 +172,150 @@ void Blockchain::printMempool() const {
     for (const auto& tx : mempool) {
         std::cout << "  - " << tx.sender << " -> " << tx.receiver << ": " << tx.amount << std::endl;
     }
-} 
+}
+
+// Add a method to set the database
+void Blockchain::setDatabase(BlockchainDB* database) {
+    db = database;
+}
+
+// Add a method to load the blockchain from database
+void Blockchain::loadFromDatabase() {
+    if (!db) {
+        std::cerr << "No database connection available" << std::endl;
+        return;
+    }
+    
+    // Clear existing chain except genesis block
+    if (!chain.empty()) {
+        Block genesisBlock = chain[0];
+        chain.clear();
+        chain.push_back(genesisBlock);
+    }
+    
+    // Get all block keys
+    auto keys = db->getAllKeys("block:");
+    
+    // Sort keys to ensure blocks are loaded in order
+    std::sort(keys.begin(), keys.end(), [](const std::string& a, const std::string& b) {
+        // Extract block numbers for numeric comparison
+        int numA = std::stoi(a.substr(6)); // "block:".length() == 6
+        int numB = std::stoi(b.substr(6));
+        return numA < numB;
+    });
+    
+    std::cout << "Found " << keys.size() << " blocks in database" << std::endl;
+    
+    // Keep track of previously loaded block hash for validation
+    std::string prevHash = chain.empty() ? "0x0" : chain.back().hash;
+    
+    // First pass: load blocks in order and validate basic structure
+    std::vector<Block> loadedBlocks;
+    
+    for (const auto& key : keys) {
+        int blockNumber = std::stoi(key.substr(6)); // "block:".length() == 6
+        
+        // Skip genesis block (already in chain)
+        if (blockNumber == 0 && !chain.empty()) {
+            std::cout << "Skipping genesis block (already loaded)" << std::endl;
+            continue;
+        }
+        
+        try {
+            Block block(0, {}, "", difficulty); // Temporary block
+            
+            if (db->getBlock(blockNumber, block)) {
+                // Basic validation
+                if (loadedBlocks.empty() && !chain.empty()) {
+                    // First loaded block should link to genesis
+                    if (block.previousHash != chain.back().hash) {
+                        std::cerr << "Warning: Block #" << blockNumber 
+                                << " does not link to genesis. Expected: " 
+                                << chain.back().hash << ", Got: " << block.previousHash << std::endl;
+                        // Still add it for now
+                    }
+                } else if (!loadedBlocks.empty()) {
+                    // Each subsequent block should link to previous
+                    if (block.previousHash != loadedBlocks.back().hash) {
+                        std::cerr << "Warning: Block #" << blockNumber 
+                                << " does not link to previous block. Expected: " 
+                                << loadedBlocks.back().hash << ", Got: " << block.previousHash << std::endl;
+                        // Still add it for now
+                    }
+                }
+                
+                // Additional validation: Check block's hash against its contents
+                std::string calculatedHash = block.calculateHash();
+                if (block.hash != calculatedHash) {
+                    std::cerr << "Warning: Block #" << blockNumber << " has invalid hash. "
+                            << "Stored: " << block.hash << ", Calculated: " << calculatedHash << std::endl;
+                    // We'll still add it, but be aware it might be corrupted
+                }
+                
+                loadedBlocks.push_back(block);
+                std::cout << "Loaded block #" << blockNumber << " with hash " << block.hash << std::endl;
+            } else {
+                std::cerr << "Failed to load block " << key << ": " << db->getLastError() << std::endl;
+                
+                // Attempt to repair database by removing the corrupted entry
+                if (db->getLastError().find("Invalid block data") != std::string::npos) {
+                    std::cerr << "Attempting to remove corrupted block entry: " << key << std::endl;
+                    if (db->remove(key)) {
+                        std::cerr << "Successfully removed corrupted block entry" << std::endl;
+                    } else {
+                        std::cerr << "Failed to remove corrupted block entry: " << db->getLastError() << std::endl;
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error loading block #" << blockNumber << ": " << e.what() << std::endl;
+            // Continue to next block rather than failing entirely
+        }
+    }
+    
+    // Add loaded blocks to the chain
+    for (const auto& block : loadedBlocks) {
+        chain.push_back(block);
+    }
+    
+    std::cout << "Loaded " << chain.size() << " blocks from database" << std::endl;
+    
+    // Load mempool transactions
+    try {
+        auto txKeys = db->getAllKeys("tx:");
+        for (const auto& key : txKeys) {
+            // Skip transactions that are already in blocks
+            std::string txHash = key.substr(3); // "tx:".length() == 3
+            bool inChain = false;
+            
+            for (const auto& block : chain) {
+                for (const auto& tx : block.transactions) {
+                    if (tx.hash == txHash) {
+                        inChain = true;
+                        break;
+                    }
+                }
+                if (inChain) break;
+            }
+            
+            if (!inChain) {
+                Transaction tx("", "", 0);
+                if (db->getTransaction(txHash, tx)) {
+                    if (tx.isValid()) {
+                        mempool.push_back(tx);
+                        std::cout << "Loaded transaction " << txHash << " to mempool" << std::endl;
+                    } else {
+                        std::cerr << "Skipping invalid transaction " << txHash << std::endl;
+                    }
+                }
+            }
+        }
+        
+        std::cout << "Loaded " << mempool.size() << " transactions to mempool" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading mempool: " << e.what() << std::endl;
+    }
+}
 
 const time_t     Blockchain::GENESIS_TIMESTAMP = 1745026508;
 const int        Blockchain::GENESIS_NONCE     =  27701;

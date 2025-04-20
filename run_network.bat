@@ -1,24 +1,44 @@
 @echo off
-echo Starting Blockchain Demo
+echo Starting Blockchain Demo Network
 
 REM Check if the executable exists
-if not exist "blockchain_demo.exe" (
-    echo Error: blockchain_demo.exe not found.
-    echo Please compile the project first with: g++ -std=c++11 -Wall main.cpp Blockchain.cpp Block.cpp Transaction.cpp wallet.cpp sha.cpp -o blockchain_demo
+if not exist "blockchain_node.exe" (
+    echo Error: blockchain_node.exe not found.
+    echo Please compile the project first with: make
     exit /b 1
 )
 
-REM 
-start "Blockchain Demo 1" cmd /k "blockchain_node.exe --type full --port 8000"
+REM Check if we should start with clean databases
+set CLEAN_FLAG=
+if "%1"=="--clean" set CLEAN_FLAG=--clean
+if "%1"=="--fresh" set CLEAN_FLAG=--clean
 
-REM 
-start "Blockchain Demo 2" cmd /k "blockchain_node.exe --type full --port 8001"
+echo Starting node on port 8000 (Full Node)...
+start "Blockchain Node 8000" cmd /k "blockchain_node.exe --type full --port 8000 --host 127.0.0.1 %CLEAN_FLAG%"
 
-REM 
-start "Blockchain Demo 3" cmd /k "blockchain_node.exe --type full --port 8005"
+REM Wait for the first node to start up
+timeout /t 5 /nobreak
 
-REM 
-start "Blockchain Demo 4" cmd /k "blockchain_node.exe --type full --port 8010"
+echo Starting node on port 8001 (Full Node)...
+start "Blockchain Node 8001" cmd /k "blockchain_node.exe --type full --port 8001 --host 127.0.0.1 %CLEAN_FLAG%"
 
-echo Started two blockchain demos.
-echo You can interact with each separately. 
+REM Wait before starting the next node
+timeout /t 5 /nobreak
+
+echo Starting node on port 8005 (Full Node)...
+start "Blockchain Node 8005" cmd /k "blockchain_node.exe --type full --port 8005 --host 127.0.0.1 %CLEAN_FLAG%"
+
+REM Wait before starting the next node
+timeout /t 5 /nobreak
+
+echo Starting node on port 8010 (Wallet Node)...
+start "Blockchain Node 8010" cmd /k "blockchain_node.exe --type wallet --port 8010 --host 127.0.0.1 %CLEAN_FLAG%"
+
+echo.
+echo All blockchain nodes have been started.
+echo You can interact with each separately in their own console window.
+echo Each node has a different port (8000, 8001, 8005, 8010).
+echo.
+echo Press Ctrl+C in any window to exit that node.
+echo.
+echo Note: Run with 'run_network.bat --clean' to start with fresh databases. 

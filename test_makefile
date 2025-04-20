@@ -1,0 +1,41 @@
+CC = g++
+
+BOOST_PATH = D:\algo\Socket Distributed Programming\boost_1_87_0
+MINGW_PREFIX = D:\msys2\mingw64
+OPENSSL_LIB_PATH = $(MINGW_PREFIX)/lib
+OPENSSL_PATH = $(MINGW_PREFIX)/include
+LEVELDB_INCLUDE = $(MINGW_PREFIX)/include
+LEVELDB_LIB = $(MINGW_PREFIX)/lib
+PATH := $(MINGW_PREFIX)/bin:$(PATH)
+
+# Compiler flags
+CFLAGS = -std=c++17 -Wall -I"$(BOOST_PATH)" -I"$(OPENSSL_PATH)" -I"$(LEVELDB_INCLUDE)" -I.
+
+# Library flags
+OPENSSL_LIBS = -L"$(OPENSSL_LIB_PATH)" -lssl -lcrypto
+LEVELDB_LIBS = -L"$(LEVELDB_LIB)" -lleveldb -lsnappy
+WIN_LIBS = -lws2_32 -lmswsock -lwsock32 -lshlwapi -lcrypt32 -lsecur32 -liphlpapi
+
+# Combine all libraries in correct order
+LDFLAGS = $(LEVELDB_LIBS) $(OPENSSL_LIBS) $(WIN_LIBS) -static-libgcc -static-libstdc++
+
+TARGET_TEST = test_app
+
+# Source files for the test application
+TEST_SRCS = test_app.cpp NetworkNode.cpp BlockchainDB.cpp Blockchain.cpp Block.cpp Transaction.cpp wallet.cpp sha.cpp crypto_utils.cpp
+
+# Object files
+TEST_OBJS = $(TEST_SRCS:.cpp=.o)
+
+all: $(TARGET_TEST)
+
+$(TARGET_TEST): $(TEST_OBJS)
+	$(CC) -o $(TARGET_TEST) $(TEST_OBJS) $(LDFLAGS)
+
+%.o: %.cpp
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	del $(TEST_OBJS) $(TARGET_TEST).exe
+
+.PHONY: all clean 
