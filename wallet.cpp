@@ -31,14 +31,36 @@ namespace wallet_internal {
     }
 }
 
-Wallet::Wallet() : balance(100.0), db(nullptr) {
+// Add helper to sanitize host:port for filename
+std::string sanitizeForFilename(const std::string& input) {
+    std::string result = input;
+    for (size_t i = 0; i < result.size(); ++i) {
+        if (result[i] == '.' || result[i] == ':' || result[i] == '/' || result[i] == '\\') {
+            result[i] = '_';
+        }
+    }
+    return result;
+}
+
+Wallet::Wallet() : balance(0.0), db(nullptr), nodeHost(""), nodePort(0) {
     generateKeyPair();
     saveToIniFile();
 }
 
-Wallet::Wallet(BlockchainDB* database) : balance(100.0), db(database) {
+Wallet::Wallet(BlockchainDB* database) : balance(0.0), db(database), nodeHost(""), nodePort(0) {
     generateKeyPair();
     saveToIniFile();
+}
+
+Wallet::Wallet(const std::string& host, int port, BlockchainDB* database) 
+    : balance(0.0), db(database), nodeHost(host), nodePort(port) {
+    
+    // Try to load from host:port first
+    if (!loadFromHostPort()) {
+        // If not found, generate a new wallet and save it
+        generateKeyPair();
+        saveToIniFile();
+    }
 }
 
 Wallet::~Wallet() {
@@ -172,6 +194,13 @@ std::string Wallet::sign(const std::string& message) const {
 
 // INI file operations
 std::string Wallet::getIniFilePath() const {
+    // If we have node info, use that for the filename
+    std::string nodeFilePath = getNodeWalletFilePath();
+    if (!nodeFilePath.empty()) {
+        return nodeFilePath;
+    }
+    
+    // Otherwise fall back to address-based path
     return "wallets/" + address + ".ini";
 }
 
@@ -351,4 +380,70 @@ void Wallet::synchronizeBalance(double newBalance) {
     // Update the in-memory balance to match database value
     balance = newBalance;
     std::cout << "Wallet " << address << " balance synchronized to " << balance << std::endl;
+}
+
+// Get wallet file path based on node info
+std::string Wallet::getNodeWalletFilePath() const {
+    if (nodeHost.empty() || nodePort == 0) {
+        return "";
+    }
+    
+    std::string hostSanitized = sanitizeForFilename(nodeHost);
+    return "wallets/" + hostSanitized + "_" + std::to_string(nodePort) + ".ini";
+}
+
+// Try to load a wallet based on host:port
+bool Wallet::loadFromHostPort() {
+    std::string filePath = getNodeWalletFilePath();
+    if (filePath.empty()) {
+        std::cerr << "Cannot load wallet: missing node host/port information" << std::endl;
+        return false;
+    }
+    
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        std::cerr << "No existing wallet found for " << nodeHost << ":" << nodePort << std::endl;
+        return false;
+    }
+    file.close();
+    
+    // Extract the address from the filename to load the wallet
+    std::string line;
+    std::ifstream readFile(filePath);
+    std::string walletAddress = "";
+    
+    while (std::getline(readFile, line)) {
+        if (line.find("address=") == 0) {
+            walletAddress = line.substr(8); // Extract address value
+            break;
+        }
+    }
+    readFile.close();
+    
+    if (walletAddress.empty()) {
+        std::cerr << "Could not determine wallet address from file: " << filePath << std::endl;
+        return false;
+    }
+    
+    // Now load the wallet using the address
+    bool success = loadFromIniFile(walletAddress);
+    if (success) {
+        std::cout << "Successfully loaded wallet for node " << nodeHost << ":" << nodePort << std::endl;
+        std::cout << "Wallet address: " << address << std::endl;
+    }
+    
+    return success;
+}
+
+// Set node information and try to load wallet based on host:port
+void Wallet::setNodeInfo(const std::string& host, int port) {
+    nodeHost = host;
+    nodePort = port;
+    
+    // Try to load an existing wallet for this node
+    if (!loadFromHostPort()) {
+        std::cout << "No existing wallet found for " << host << ":" << port << std::endl;
+        std::cout << "Using current wallet and saving to node file" << std::endl;
+        saveToIniFile(); // Save current wallet to the node-specific file
+    }
 }

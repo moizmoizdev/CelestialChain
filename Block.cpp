@@ -73,4 +73,55 @@ std::string Block::mineBlock() {
             return hash;
         }
     }
+}
+
+// Implement the validateTransactions method
+bool Block::validateTransactions() const {
+    // Count coinbase transactions
+    int coinbaseCount = 0;
+    
+    // For genesis block, just check if there's only one transaction and it's valid
+    if (blockNumber == 0) {
+        if (transactions.size() != 1) {
+            std::cerr << "ERROR: Genesis block should have exactly one transaction" << std::endl;
+            return false;
+        }
+        
+        if (transactions[0].sender != "Genesis" || transactions[0].receiver != "Genesis") {
+            std::cerr << "ERROR: Genesis block's transaction should be from Genesis to Genesis" << std::endl;
+            return false;
+        }
+        
+        return transactions[0].isValid();
+    }
+    
+    // For regular blocks, validate each transaction and check coinbase count
+    for (const auto& tx : transactions) {
+        // Check if it's a coinbase transaction
+        if (tx.sender == "Genesis" && tx.receiver != "Genesis") {
+            coinbaseCount++;
+            
+            // Coinbase should typically be the last transaction in a block
+            if (coinbaseCount > 1) {
+                std::cerr << "ERROR: Block contains multiple coinbase transactions" << std::endl;
+                return false;
+            }
+        }
+        
+        // Verify each transaction is valid
+        if (!tx.isValid()) {
+            std::cerr << "ERROR: Block contains invalid transaction: " << tx.hash << std::endl;
+            return false;
+        }
+    }
+    
+    // Check that there is exactly one coinbase transaction (reward)
+    // Skip this check for genesis block
+    if (blockNumber > 0 && coinbaseCount != 1) {
+        std::cerr << "ERROR: Block should contain exactly one coinbase transaction, found " 
+                 << coinbaseCount << std::endl;
+        return false;
+    }
+    
+    return true;
 } 

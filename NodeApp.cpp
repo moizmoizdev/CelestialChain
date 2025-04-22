@@ -181,10 +181,9 @@ int main(int argc, char* argv[]) {
     }
     
     cout << "Creating wallet for this node..." << endl;
-    Wallet nodeWallet;
-    // Connect the wallet to the database for transaction history
-    nodeWallet.setDatabase(&db);
-    cout << "Wallet created with address: " << nodeWallet.getAddress() << endl;
+    // Initialize wallet with host:port to load existing wallet or create a new one
+    Wallet nodeWallet(host, port, dbPtr);
+    cout << "Wallet address: " << nodeWallet.getAddress() << endl;
     
     // Initializing network manager with the blockchain and wallet
     NetworkManager networkManager(blockchain, nodeWallet, host, port, nodeType);

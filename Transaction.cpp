@@ -83,8 +83,33 @@ bool Transaction::verifySignature() const {
 }
 
 bool Transaction::isValid() const {
-    // Special case for genesis transaction
+    // Special case for genesis block's genesis transaction 
     if (sender == "Genesis" && receiver == "Genesis") {
+        return true;
+    }
+    
+    // Special case for coinbase/mining reward transactions
+    if (sender == "Genesis" && receiver != "Genesis") {
+        // For coinbase transactions, we only need to verify some basic properties
+        if (receiver.empty()) {
+            std::cerr << "ERROR: Coinbase transaction has empty receiver field" << std::endl;
+            return false;
+        }
+        
+        if (amount <= 0) {
+            std::cerr << "ERROR: Coinbase transaction has non-positive amount: " << amount << std::endl;
+            return false;
+        }
+        
+        // Verify the hash matches
+        std::string expectedHash = calculateHash();
+        if (hash != expectedHash) {
+            std::cerr << "ERROR: Coinbase transaction hash mismatch." << std::endl;
+            std::cerr << "  Expected: " << expectedHash << std::endl;
+            std::cerr << "  Got: " << hash << std::endl;
+            return false;
+        }
+        
         return true;
     }
     

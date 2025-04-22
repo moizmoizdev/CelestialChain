@@ -25,6 +25,7 @@ public:
     static const time_t GENESIS_TIMESTAMP;
     static const int     GENESIS_NONCE;
     static const std::string GENESIS_HASH;
+    static const double MINING_REWARD;   // Mining reward constant
     
     Blockchain(int difficulty = 4) ;
     

@@ -23,6 +23,9 @@ public:
    
     std::string calculateHash() const;
     std::string mineBlock();
+    
+    // Method to validate block transactions
+    bool validateTransactions() const;
 
 private:
     std::string simpleHash(const std::string& str) const;

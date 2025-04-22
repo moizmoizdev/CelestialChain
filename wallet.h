@@ -16,6 +16,8 @@ private:
     std::string publicKey;
     double balance;
     BlockchainDB* db;  // Database connection for transactions
+    std::string nodeHost;  // Host address for this wallet's node
+    int nodePort;          // Port for this wallet's node
     
     void generateKeyPair();
     std::string deriveAddress(const std::string& pubKey) const;
@@ -25,10 +27,12 @@ private:
     bool saveToIniFile() const;
     bool loadFromIniFile(const std::string& walletAddress);
     std::string getIniFilePath() const;
+    std::string getNodeWalletFilePath() const;  // Get wallet file path based on host:port
     
 public:
     Wallet();
     Wallet(BlockchainDB* database);  // Constructor with database
+    Wallet(const std::string& host, int port, BlockchainDB* database = nullptr);  // Constructor with host:port
     ~Wallet();
     
     std::string getPublicKeyHex() const;
@@ -48,6 +52,10 @@ public:
 
     // Method to synchronize wallet balance with the database
     void synchronizeBalance(double newBalance);
+    
+    // Set node information and try to load wallet based on host:port
+    void setNodeInfo(const std::string& host, int port);
+    bool loadFromHostPort(); // Try to load wallet based on host:port
 };
 
 #endif // WALLET_H

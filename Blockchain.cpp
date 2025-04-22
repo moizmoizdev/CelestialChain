@@ -21,6 +21,12 @@ Blockchain::Blockchain(int difficulty) : difficulty(difficulty), db(nullptr), ba
 
 void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
     Block newBlock(chain.size(), transactions, getLatestBlock().hash, difficulty);
+    
+    // Validate the transactions in the new block
+    if (!newBlock.validateTransactions()) {
+        throw std::runtime_error("ERROR: Block contains invalid transactions");
+    }
+    
     chain.push_back(newBlock);
     
     // Update balances for this block
@@ -49,6 +55,11 @@ void Blockchain::addExistingBlock(const Block& block) {
     
     if (block.blockNumber==getLatestBlock().blockNumber && block.hash!=getLatestBlock().hash ){
         throw std::runtime_error("Blockchain integrity compromised. Block hash mismatch even though BlockNumber was same. Block hash: " + block.hash + " Current hash: " + getLatestBlock().hash);
+    }
+    
+    // Validate the transactions in the block
+    if (!block.validateTransactions()) {
+        throw std::runtime_error("ERROR: Received block contains invalid transactions");
     }
     
     chain.push_back(block);
@@ -99,23 +110,65 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
         throw std::runtime_error("ERROR: Wallet nodes cannot mine blocks.");
     }
     
-    if (mempool.empty()) {
-        throw std::runtime_error("No transactions in mempool to mine.");
+    if (walletList.empty()) {
+        throw std::runtime_error("ERROR: No wallet provided for mining reward.");
     }
     
+    // Count how many empty blocks we've mined so far
+    int emptyBlockCount = 0;
+    for (const auto& block : chain) {
+        // Count blocks that only have one transaction (the coinbase/reward)
+        if (block.transactions.size() <= 1) {
+            emptyBlockCount++;
+        }
+    }
+    
+    // After 3 empty blocks, require transactions
+    if (mempool.empty() && emptyBlockCount >= 3) {
+        throw std::runtime_error("ERROR: Already mined 3 empty blocks. Need transactions to mine more blocks.");
+    }
+    
+    // We need at least one wallet to receive the mining reward
+    Wallet* minerWallet = walletList[0];
+    std::string minerAddress = minerWallet->getAddress();
+    
     // Verify all transactions have sufficient balance
-    if (balanceMap) {
+    if (balanceMap && !mempool.empty()) {
         for (const auto& tx : mempool) {
             if (!verifyTransactionBalance(tx)) {
                 throw std::runtime_error("ERROR: Transaction from " + tx.sender + 
-                                       " has insufficient balance.");
+                                      " has insufficient balance.");
             }
         }
     }
     
-    std::cout << "Mining new block with " << mempool.size() << " transactions..." << std::endl;
+    // Create a copy of mempool since we'll be adding the reward transaction
+    std::vector<Transaction> blockTransactions = mempool;
     
-    Block newBlock(chain.size(), mempool, getLatestBlock().hash, difficulty);
+    // Create a mining reward transaction (coinbase)
+    Transaction rewardTx("Genesis", minerAddress, MINING_REWARD);
+    rewardTx.hash = rewardTx.calculateHash();
+    
+    // Add the reward transaction to the block transactions
+    blockTransactions.push_back(rewardTx);
+    
+    // Log appropriate message based on whether we're mining with transactions or just reward
+    if (mempool.empty()) {
+        std::cout << "Mining new block with only coinbase reward transaction (" 
+                  << (emptyBlockCount + 1) << " of 3 allowed empty blocks)" << std::endl;
+    } else {
+        std::cout << "Mining new block with " << blockTransactions.size() << " transactions (including mining reward)..." << std::endl;
+    }
+    std::cout << "Mining reward of " << MINING_REWARD << " coins will be sent to " << minerAddress << std::endl;
+    
+    // Create and mine the new block with all transactions including the reward
+    Block newBlock(chain.size(), blockTransactions, getLatestBlock().hash, difficulty);
+    
+    // Validate the transactions in the block before adding it
+    if (!newBlock.validateTransactions()) {
+        throw std::runtime_error("ERROR: Failed to mine block - invalid transactions");
+    }
+    
     chain.push_back(newBlock);
     
     std::cout << "Block #" << newBlock.blockNumber << " mined successfully!" << std::endl;
@@ -140,6 +193,10 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
     } 
     // If no balanceMap, fall back to the old method of updating wallets directly
     else {
+        // Directly update miner's wallet with the reward
+        minerWallet->receiveMoney(MINING_REWARD);
+        
+        // And process other transactions
         for (const auto& tx : mempool) {
             for (auto& wallet : wallets) {
                 if (wallet->getAddress() == tx.receiver) {
@@ -196,11 +253,20 @@ bool Blockchain::isValidChain() const {
         const Block& currentBlock = chain[i];
         const Block& previousBlock = chain[i - 1];
         
+        // Check block integrity
         if (currentBlock.previousHash != previousBlock.hash) {
+            std::cerr << "ERROR: Invalid chain - block " << i << " has incorrect previous hash" << std::endl;
             return false;
         }
         
         if (currentBlock.hash != currentBlock.calculateHash()) {
+            std::cerr << "ERROR: Invalid chain - block " << i << " has incorrect hash" << std::endl;
+            return false;
+        }
+        
+        // Validate transactions in the block
+        if (!currentBlock.validateTransactions()) {
+            std::cerr << "ERROR: Invalid chain - block " << i << " contains invalid transactions" << std::endl;
             return false;
         }
     }
@@ -427,3 +493,4 @@ double Blockchain::getTotalSupply() const {
 const time_t     Blockchain::GENESIS_TIMESTAMP = 1745026508;
 const int Blockchain::GENESIS_NONCE     =  27701;
 const std::string Blockchain::GENESIS_HASH      = "0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80";
+const double Blockchain::MINING_REWARD   = 50.0; // 50 coins per block
