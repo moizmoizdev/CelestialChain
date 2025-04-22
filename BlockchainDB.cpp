@@ -6,6 +6,7 @@
 #include <leveldb/options.h>
 #include <leveldb/write_batch.h>
 #include <boost/lexical_cast.hpp>
+#include <algorithm>
 
 BlockchainDB::BlockchainDB(const std::string& dbPath) : db(nullptr) {
     leveldb::Options options;
@@ -14,18 +15,18 @@ BlockchainDB::BlockchainDB(const std::string& dbPath) : db(nullptr) {
     options.max_file_size = 2 * 1024 * 1024;       // 2MB file size
     options.block_cache = leveldb::NewLRUCache(64 * 1024 * 1024);  // 64MB cache
     
-    leveldb::Status status = leveldb::DB::Open(options, dbPath, &db);
+    leveldb::DB* raw_db;
+    leveldb::Status status = leveldb::DB::Open(options, dbPath, &raw_db);
     if (!status.ok()) {
         lastError = status.ToString();
         std::cerr << "Failed to open database: " << lastError << std::endl;
+    } else {
+        db.reset(raw_db);
     }
 }
 
 BlockchainDB::~BlockchainDB() {
-    if (db) {
-        delete db;
-        db = nullptr;
-    }
+    // std::unique_ptr will automatically delete the db pointer
 }
 
 bool BlockchainDB::put(const std::string& key, const std::string& value) {
@@ -237,8 +238,15 @@ std::vector<std::string> BlockchainDB::getAllKeys(const std::string& prefix) con
     }
     
     std::unique_ptr<leveldb::Iterator> it(db->NewIterator(leveldb::ReadOptions()));
-    for (it->Seek(prefix); it->Valid() && it->key().ToString().starts_with(prefix); it->Next()) {
-        keys.push_back(it->key().ToString());
+    for (it->Seek(prefix); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        // Check if the key starts with the prefix
+        if (key.compare(0, prefix.length(), prefix) == 0) {
+            keys.push_back(key);
+        } else {
+            // If we moved past keys with the prefix, we can stop
+            break;
+        }
     }
     
     return keys;

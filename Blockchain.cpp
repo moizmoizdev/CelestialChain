@@ -3,13 +3,13 @@
 
 
 Blockchain::Blockchain(int difficulty) : difficulty(difficulty) {
-    // Create genesis block
+    // genesis block
     std::vector<Transaction> genesisTransactions;
     Transaction genesisTx("Genesis", "Genesis", 0);
     genesisTx.hash = genesisTx.calculateHash();
     genesisTransactions.push_back(genesisTx);
     
-    // Previous hash for genesis block is 0
+    // prev hash for genesis block will be 0
     Block genesisBlock(0, genesisTransactions, "0x0", difficulty);
     genesisBlock.timestamp = GENESIS_TIMESTAMP;
     genesisBlock.nonce     = GENESIS_NONCE;
@@ -18,7 +18,7 @@ Blockchain::Blockchain(int difficulty) : difficulty(difficulty) {
     
     std::cout << "Blockchain initialized with genesis block: " << genesisBlock.hash << std::endl;
 }
-// Mine and add a brand‐new block locally
+
 void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
     Block newBlock(chain.size(), transactions, getLatestBlock().hash, difficulty);
     chain.push_back(newBlock);
@@ -26,9 +26,9 @@ void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
     std::cout << "Hash: " << newBlock.hash << std::endl;
 }
 
-// ** NEW ** Push a block received from the network (no re‑mining)
+// Push a block received from the network (doesnt remine)
 void Blockchain::addExistingBlock(const Block& block) {
-    // Optionally validate: block.previousHash == getLatestBlock().hash
+    //  block.previousHash == getLatestBlock().hash
     chain.push_back(block);
     mempool.clear();
     std::cout << "Block #" << block.blockNumber << " added to the blockchain." << std::endl;
@@ -54,7 +54,6 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
     
     std::cout << "Mining new block with " << mempool.size() << " transactions..." << std::endl;
     
-    // Create a new block with all transactions in the mempool
     Block newBlock(chain.size(), mempool, getLatestBlock().hash, difficulty);
     chain.push_back(newBlock);
     
@@ -62,9 +61,7 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
     std::cout << "Hash: " << newBlock.hash << std::endl;
     std::cout << "Nonce: " << newBlock.nonce << std::endl;
     
-    // Process transactions for wallet balances
     for (const auto& tx : mempool) {
-        // Find receiver wallet and update balance
         for (auto& wallet : wallets) {
             if (wallet->getAddress() == tx.receiver) {
                 wallet->receiveMoney(tx.amount);
@@ -73,7 +70,6 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType) {
         }
     }
     
-    // Clear the mempool after mining
     mempool.clear();
     return chain.back();
 }
@@ -111,17 +107,14 @@ bool Blockchain::isValidChain() const {
         return false;
     }
     
-    // Check each block
     for (size_t i = 1; i < chain.size(); i++) {
         const Block& currentBlock = chain[i];
         const Block& previousBlock = chain[i - 1];
         
-        // Check if the previous hash matches
         if (currentBlock.previousHash != previousBlock.hash) {
             return false;
         }
         
-        // Check if the hash is valid
         if (currentBlock.hash != currentBlock.calculateHash()) {
             return false;
         }
@@ -158,5 +151,5 @@ void Blockchain::printMempool() const {
 } 
 
 const time_t     Blockchain::GENESIS_TIMESTAMP = 1745026508;
-const int        Blockchain::GENESIS_NONCE     =  27701;
+const int Blockchain::GENESIS_NONCE     =  27701;
 const std::string Blockchain::GENESIS_HASH      = "0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80";

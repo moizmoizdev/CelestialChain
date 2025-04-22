@@ -10,144 +10,182 @@
 #include "wallet.h"
 #include "Types.h"
 #include <stdexcept>
+#include <direct.h> // For _mkdir on Windows
+using namespace std;
+// Helper function to return foldername from ip+port
+string fileNameFromHost(const string& input) {
+    string result = input;
+    for (size_t i = 0; i < result.size(); ++i) {
+        if (result[i] == '.' || result[i] == ':' || result[i] == '/' || result[i] == '\\') {
+            result[i] = '_';
+        }
+    }
+    return result;
+}
 
 void clearScreen() {
-#ifdef _WIN32
     system("cls");
+}
+
+// Create directory if it doesn't exist
+bool createDirectory(const string& path) {
+#ifdef _WIN32
+    int result = _mkdir(path.c_str());
 #else
-    system("clear");
+    int result = mkdir(path.c_str(), 0755);
 #endif
+    return result == 0 || errno == EEXIST;
 }
 
 void printFullNodeMenu() {
-    std::cout << "\n========== Blockchain Node ==========" << std::endl;
-    std::cout << "1. View blockchain" << std::endl;
-    std::cout << "2. View mempool" << std::endl;
-    std::cout << "3. Mine block" << std::endl;
-    std::cout << "4. Create transaction" << std::endl;
-    std::cout << "5. View wallet" << std::endl;
-    std::cout << "6. Connect to peer" << std::endl;
-    std::cout << "7. Request blockchain from peers" << std::endl;
-    std::cout << "8. View connected peers" << std::endl;
-    std::cout << "0. Exit" << std::endl;
-    std::cout << "====================================" << std::endl;
-    std::cout << "Enter your choice: ";
+    cout << "\n-------- Blockchain Node --------" << endl;
+    cout << "1. View blockchain" << endl;
+    cout << "2. View mempool" << endl;
+    cout << "3. Mine block" << endl;
+    cout << "4. Create transaction" << endl;
+    cout << "5. View wallet" << endl;
+    cout << "6. Connect to peer" << endl;
+    cout << "7. Request blockchain from peers" << endl;
+    cout << "8. View connected peers" << endl;
+    cout << "0. Exit" << endl;
+    cout << "====================================" << endl;
+    cout << "Enter your choice: ";
 }
 
 void printWalletNodeMenu() {
-    std::cout << "\n========== Blockchain Wallet ==========" << std::endl;
-    std::cout << "1. View blockchain" << std::endl;
-    std::cout << "2. View mempool" << std::endl;
-    std::cout << "3. Create transaction" << std::endl;
-    std::cout << "4. View wallet" << std::endl;
-    std::cout << "5. Connect to peer" << std::endl;
-    std::cout << "6. Request blockchain from peers" << std::endl;
-    std::cout << "7. View connected peers" << std::endl;
-    std::cout << "0. Exit" << std::endl;
-    std::cout << "======================================" << std::endl;
-    std::cout << "Enter your choice: ";
+    cout << "\n--------- Blockchain Wallet --------" << endl;
+    cout << "1. View blockchain" << endl;
+    cout << "2. View mempool" << endl;
+    cout << "3. Create transaction" << endl;
+    cout << "4. View wallet" << endl;
+    cout << "5. Connect to peer" << endl;
+    cout << "6. Request blockchain from peers" << endl;
+    cout << "7. View connected peers" << endl;
+    cout << "0. Exit" << endl;
+    cout << "-----------------------------------" << endl;
+    cout << "Enter your choice: ";
 }
 
 int main(int argc, char* argv[]) {
     clearScreen();
-    std::cout << "Starting Blockchain Node Application" << std::endl;
+    cout << "Starting Blockchain Node Application" << endl;
 
-    // Default parameters
-    std::string host = "127.0.0.1";
+    string host = "127.0.0.1";
     int port = 8000;
     NodeType nodeType = NodeType::FULL_NODE;
     int difficulty = 4;
 
     // Parse command line arguments
     for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
+        string arg = argv[i];
         if (arg == "--host" && i + 1 < argc) {
             host = argv[++i];
         } else if (arg == "--port" && i + 1 < argc) {
-            port = std::stoi(argv[++i]);
+            port = stoi(argv[++i]);
         } else if (arg == "--type" && i + 1 < argc) {
-            std::string type = argv[++i];
+            string type = argv[++i];
             if (type == "wallet") {
                 nodeType = NodeType::WALLET_NODE;
             } else {
                 nodeType = NodeType::FULL_NODE;
             }
         } else if (arg == "--difficulty" && i + 1 < argc) {
-            difficulty = std::stoi(argv[++i]);
+            difficulty = stoi(argv[++i]);
         } else if (arg == "--help") {
-            std::cout << "Usage: " << argv[0] << " [OPTIONS]\n";
-            std::cout << "  --host HOST       Set the host address\n";
-            std::cout << "  --port PORT       Set the port number\n";
-            std::cout << "  --type TYPE       Set the node type (full or wallet)\n";
-            std::cout << "  --difficulty DIFF Set the mining difficulty\n";
-            std::cout << "  --help            Display this help message\n";
+            cout << "Usage: " << argv[0] << " [OPTIONS]\n";
+            cout << "  --host HOST       Set the host address\n";
+            cout << "  --port PORT       Set the port number\n";
+            cout << "  --type TYPE       Set the node type (full or wallet)\n";
+            cout << "  --difficulty DIFF Set the mining difficulty\n";
+            cout << "  --help            Display this help message\n";
             return 0;
         }
     }
 
-    // Initialize blockchain 
     Blockchain blockchain(difficulty);
-    // INitializing Database
-    BlockchainDB db("./Storage");
-    if (!db.isOpen()) {
-    std::cerr << "Database error: " << db.getLastError() << std::endl;
-    exit(503);
-}
-    // Create a wallet for this node
-    std::cout << "Creating wallet for this node..." << std::endl;
-    Wallet nodeWallet;
-    std::cout << "Wallet created with address: " << nodeWallet.getAddress() << std::endl;
     
-    // Initialize network manager with the blockchain and wallet
+    string hostfilename = fileNameFromHost(host);
+    string dbPath = "./Storage_" + hostfilename + "_" + to_string(port);
+    
+    if (!createDirectory(dbPath)) {
+        cout << "Error: Could not create storage directory: " << dbPath << endl;
+        return 1;
+    }
+    
+    // Initializing Database
+    cout << "Opening database at " << dbPath << "..." << endl;
+    BlockchainDB db(dbPath);
+    if (!db.isOpen()) {
+        cout << "Database error: " << db.getLastError() << endl;
+        cout << "Do you want to continue without database? (y/n): ";
+        char response;
+        cin >> response;
+        if (response != 'y' && response != 'Y') {
+            cout << "Exiting application." << endl;
+            return 1;
+        }
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    } else {
+        cout << "Database opened successfully." << endl;
+    }
+    
+    cout << "Creating wallet for this node..." << endl;
+    Wallet nodeWallet;
+    cout << "Wallet created with address: " << nodeWallet.getAddress() << endl;
+    
+    // Initializing network manager with the blockchain and wallet
     NetworkManager networkManager(blockchain, nodeWallet, host, port, nodeType);
 
     // Start network services
     try {
         networkManager.start();
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to start network services: " << e.what() << std::endl;
+    } catch (const exception& e) {
+        cout << "Failed to start network services: " << e.what() << endl;
         return 1;
     }
 
-    // Bootstrap: connect to a few known peers for peer discovery
-    std::vector<std::pair<std::string,int>> bootstrap = {
+    // peers_discovery_list is to connect to a few known peers for peer discovery
+    // later, it propagates when a network is established
+    vector<pair<string,int>> peers_discovery_list = {
         {"127.0.0.1", 8000},
         {"127.0.0.1", 8001},
         {"127.0.0.1", 8002},
     };
-    for (auto& [bhost, bport] : bootstrap) {
-        if (bhost == host && bport == port) continue;
+    for (auto& [bhost, bport] : peers_discovery_list) {
+        if (bhost == host && bport == port) 
+        continue;
         if (networkManager.connectToPeer(bhost, bport)) {
-            std::cout << "Bootstrapped from " << bhost << ':' << bport << std::endl;
+            cout << "Bootstrapped from " << bhost << ':' << bport << endl;
         }
     }
 
-    std::cout << "Network services started and bootstrapped. Press Enter to continue..." << std::endl;
-    std::cin.get();
+    cout << "Network services started and bootstrapped. Press Enter to continue..." << endl;
+    cin.get();
 
-    // For mining operations, we'll need a vector of wallet pointers
-    std::vector<Wallet*> wallets = { &nodeWallet };
+    vector<Wallet*> wallets = { &nodeWallet };
 
     int choice;
     do {
         clearScreen();
-        if (nodeType == NodeType::FULL_NODE) printFullNodeMenu();
-        else                                  printWalletNodeMenu();
+        if (nodeType == NodeType::FULL_NODE)
+            printFullNodeMenu();
+        else
+            printWalletNodeMenu();
 
-        std::cin >> choice;
-        if (std::cin.fail()) {
-            std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        cin >> choice;
+        if (cin.fail()) {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
             choice = -1;
         }
 
-        std::string peerAddress, receiver;
+        string peerAddress, receiver;
         int peerPort;double amount;
 
         switch (choice) {
             case 1:
                 clearScreen();
-                std::cout << blockchain.toString() << std::endl;
+                cout << blockchain.toString() << endl;
                 break;
             case 2:
                 clearScreen();
@@ -160,10 +198,10 @@ int main(int argc, char* argv[]) {
                     networkManager.broadcastBlock(blockchain.getLatestBlock());
                 } else {
                     clearScreen();
-                    std::cout << "Enter receiver: "; std::cin >> receiver;
-                    std::cout << "Enter amount: ";   std::cin >> amount;
+                    cout << "Enter receiver: "; cin >> receiver;
+                    cout << "Enter amount: ";   cin >> amount;
                     Transaction tx("", "", 0);
-                    std::cout << "Transaction is created" << std::endl;
+                    cout << "Transaction is created" << endl;
                     nodeWallet.sendMoney(amount, receiver, tx);
                     blockchain.addTransaction(tx);
                     networkManager.broadcastTransaction(tx);
@@ -172,39 +210,39 @@ int main(int argc, char* argv[]) {
             case 4:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    std::cout << "Enter receiver: "; std::cin >> receiver;
-                    std::cout << "Enter amount: ";   std::cin >> amount;
+                    cout << "Enter receiver: "; cin >> receiver;
+                    cout << "Enter amount: ";   cin >> amount;
                     Transaction tx("", "", 0);
-                    std::cout << "Transaction is created" << std::endl;
+                    cout << "Transaction is created" << endl;
                     nodeWallet.sendMoney(amount, receiver, tx);
-                    std::cout << "Money is sent" << std::endl;
+                    cout << "Money is sent" << endl;
                     blockchain.addTransaction(tx);
-                    std::cout << "Transaction is added" << std::endl;
+                    cout << "Transaction is added" << endl;
                     networkManager.broadcastTransaction(tx);
-                    std::cout << "Transaction is broadcasted" << std::endl;
+                    cout << "Transaction is broadcasted" << endl;
                 } else {
                     clearScreen();
-                    std::cout << "Address: " << nodeWallet.getAddress() << std::endl;
-                    std::cout << "Balance: " << nodeWallet.getBalance() << std::endl;
+                    cout << "Address: " << nodeWallet.getAddress() << endl;
+                    cout << "Balance: " << nodeWallet.getBalance() << endl;
                 }
                 break;
             case 5:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    std::cout << "Address: " << nodeWallet.getAddress() << std::endl;
-                    std::cout << "Balance: " << nodeWallet.getBalance() << std::endl;
+                    cout << "Address: " << nodeWallet.getAddress() << endl;
+                    cout << "Balance: " << nodeWallet.getBalance() << endl;
                 } else {
                     clearScreen();
-                    std::cout << "Peer address: "; std::cin >> peerAddress;
-                    std::cout << "Peer port: ";   std::cin >> peerPort;
+                    cout << "Peer address: "; cin >> peerAddress;
+                    cout << "Peer port: ";   cin >> peerPort;
                     networkManager.connectToPeer(peerAddress, peerPort);
                 }
                 break;
             case 6:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    std::cout << "Peer address: "; std::cin >> peerAddress;
-                    std::cout << "Peer port: ";   std::cin >> peerPort;
+                    cout << "Peer address: "; cin >> peerAddress;
+                    cout << "Peer port: ";   cin >> peerPort;
                     networkManager.connectToPeer(peerAddress, peerPort);
                 } else {
                     clearScreen();
@@ -219,7 +257,7 @@ int main(int argc, char* argv[]) {
                     clearScreen();
                     auto peers = networkManager.getConnectedPeers();
                     for (auto& p : peers)
-                        std::cout << p.id << " @ " << p.address << ":" << p.port << std::endl;
+                        cout << p.id << " @ " << p.address << ":" << p.port << endl;
                 }
                 break;
             case 8:
@@ -227,19 +265,19 @@ int main(int argc, char* argv[]) {
                     clearScreen();
                     auto peers = networkManager.getConnectedPeers();
                     for (auto& p : peers)
-                        std::cout << p.id << " @ " << p.address << ":" << p.port << std::endl;
+                        cout << p.id << " @ " << p.address << ":" << p.port << endl;
                 }
                 break;
             case 0:
-                std::cout << "Exiting. Goodbye!" << std::endl;
+                cout << "Exiting. Goodbye!" << endl;
                 break;
             default:
-                std::cout << "Invalid choice." << std::endl;
+                cout << "Invalid choice." << endl;
         }
         if (choice != 0) {
-            std::cout << "\nPress Enter to continue...";
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            std::cin.get();
+            cout << "\nPress Enter to continue...";
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            cin.get();
         }
     } while (choice != 0);
 

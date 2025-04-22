@@ -2,9 +2,9 @@
 echo Starting Blockchain Demo
 
 REM Check if the executable exists
-if not exist "blockchain_demo.exe" (
-    echo Error: blockchain_demo.exe not found.
-    echo Please compile the project first with: g++ -std=c++11 -Wall main.cpp Blockchain.cpp Block.cpp Transaction.cpp wallet.cpp sha.cpp -o blockchain_demo
+if not exist "blockchain_node.exe" (
+    echo Error: blockchain_node.exe not found.
+    echo Please compile the project first with: make
     exit /b 1
 )
 
