@@ -8,6 +8,16 @@
 #include <leveldb/write_batch.h>
 #include "Block.h"
 #include "Transaction.h"
+#include <map>
+// Structure to store journal entries
+struct BalanceJournalEntry {
+    std::string address;
+    std::string txHash;
+    double amount;
+    bool isCredit;
+    size_t blockHeight;
+    time_t timestamp;
+};
 
 class BlockchainDB {
 private:
@@ -32,6 +42,18 @@ public:
     bool saveTransaction(const Transaction& tx);
     bool getTransaction(const std::string& txHash, Transaction& tx) const;
 
+    // Wallet balance operations
+    bool updateBalance(const std::string& address, double newBalance);
+    bool getBalance(const std::string& address, double& balance) const;
+    bool addBalanceJournalEntry(const std::string& address, const std::string& txHash, 
+                               double amount, bool isCredit, size_t blockHeight);
+    std::vector<BalanceJournalEntry> getBalanceJournal(const std::string& address) const;
+    
+    // World state operations
+    bool saveWorldState(size_t blockHeight);
+    bool loadWorldState(size_t blockHeight, std::map<std::string, double>& balances) const;
+    std::map<std::string, double> getAllBalances() const;
+
     // Iterator operations
     std::vector<std::string> getAllKeys(const std::string& prefix = "") const;
     bool verifyDatabaseIntegrity(bool repairCorrupted);
@@ -41,6 +63,12 @@ private:
     Block deserializeBlock(const std::string& data) const;
     std::string serializeTransaction(const Transaction& tx) const;
     Transaction deserializeTransaction(const std::string& data) const;
+    
+    // Helper methods for journal entries
+    std::string serializeJournalEntry(const BalanceJournalEntry& entry) const;
+    BalanceJournalEntry deserializeJournalEntry(const std::string& data) const;
+    std::string serializeWorldState(const std::map<std::string, double>& balances) const;
+    std::map<std::string, double> deserializeWorldState(const std::string& data) const;
 };
 
 #endif // BLOCKCHAIN_DB_H

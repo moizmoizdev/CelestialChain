@@ -2,7 +2,7 @@
 #include <iostream>
 
 
-Blockchain::Blockchain(int difficulty) : difficulty(difficulty) {
+Blockchain::Blockchain(int difficulty) : difficulty(difficulty), db(nullptr), balanceMap(nullptr) {
     // genesis block
     std::vector<Transaction> genesisTransactions;
     Transaction genesisTx("Genesis", "Genesis", 0);
@@ -23,6 +23,11 @@ void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
     Block newBlock(chain.size(), transactions, getLatestBlock().hash, difficulty);
     chain.push_back(newBlock);
     
+    // Update balances for this block
+    if (balanceMap) {
+        updateBalancesForBlock(newBlock);
+    }
+    
     // Persist the block to database
     if (db && !db->saveBlock(newBlock)) {
         std::cerr << "Failed to save block to database: " << db->getLastError() << std::endl;
@@ -34,10 +39,24 @@ void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
 
 // Push a block received from the network (doesnt remine)
 void Blockchain::addExistingBlock(const Block& block) {
-    if(block.previousHash != getLatestBlock().hash){
-        throw std::runtime_error("Blockchain integrity compromised. Previous hash mismatch.");
+    if(block.previousHash != getLatestBlock().hash && block.blockNumber!=getLatestBlock().blockNumber){
+        throw std::runtime_error("Blockchain integrity compromised. Previous hash mismatch. Previous hash: " + block.previousHash + " Current hash: " + getLatestBlock().hash);
     }
+    
+    if (block.blockNumber==getLatestBlock().blockNumber && block.hash==getLatestBlock().hash && block.previousHash==getLatestBlock().previousHash){
+        return;
+    }
+    
+    if (block.blockNumber==getLatestBlock().blockNumber && block.hash!=getLatestBlock().hash ){
+        throw std::runtime_error("Blockchain integrity compromised. Block hash mismatch even though BlockNumber was same. Block hash: " + block.hash + " Current hash: " + getLatestBlock().hash);
+    }
+    
     chain.push_back(block);
+    
+    // Update balances for this block
+    if (balanceMap) {
+        updateBalancesForBlock(block);
+    }
     
     // Persist the block to database
     if (db && !db->saveBlock(block)) {
@@ -49,6 +68,12 @@ void Blockchain::addExistingBlock(const Block& block) {
 }
 
 void Blockchain::addTransaction(const Transaction& transaction) {
+    // Verify the transaction has sufficient balance
+    if (balanceMap && !verifyTransactionBalance(transaction)) {
+        std::cerr << "Transaction rejected: Insufficient balance for " << transaction.sender << std::endl;
+        return;
+    }
+    
     for (auto& old : mempool) {
         if (old.hash == transaction.hash) return;
     }
@@ -78,6 +103,16 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
         throw std::runtime_error("No transactions in mempool to mine.");
     }
     
+    // Verify all transactions have sufficient balance
+    if (balanceMap) {
+        for (const auto& tx : mempool) {
+            if (!verifyTransactionBalance(tx)) {
+                throw std::runtime_error("ERROR: Transaction from " + tx.sender + 
+                                       " has insufficient balance.");
+            }
+        }
+    }
+    
     std::cout << "Mining new block with " << mempool.size() << " transactions..." << std::endl;
     
     Block newBlock(chain.size(), mempool, getLatestBlock().hash, difficulty);
@@ -87,13 +122,37 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
     std::cout << "Hash: " << newBlock.hash << std::endl;
     std::cout << "Nonce: " << newBlock.nonce << std::endl;
     
-    for (const auto& tx : mempool) {
+    // First update balances in the database to ensure persistence
+    if (balanceMap) {
+        updateBalancesForBlock(newBlock);
+    }
+    
+    // Then synchronize in-memory wallet objects with database
+    if (balanceMap) {
         for (auto& wallet : wallets) {
-            if (wallet->getAddress() == tx.receiver) {
-                wallet->receiveMoney(tx.amount);
-                break;
+            // Get the current balance from the database
+            double dbBalance = 0.0;
+            if (balanceMap->getBalance(wallet->getAddress(), dbBalance)) {
+                // Synchronize the wallet's in-memory balance with the database
+                wallet->synchronizeBalance(dbBalance);
             }
         }
+    } 
+    // If no balanceMap, fall back to the old method of updating wallets directly
+    else {
+        for (const auto& tx : mempool) {
+            for (auto& wallet : wallets) {
+                if (wallet->getAddress() == tx.receiver) {
+                    wallet->receiveMoney(tx.amount);
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Save block to database
+    if (db && !db->saveBlock(newBlock)) {
+        std::cerr << "Failed to save block to database: " << db->getLastError() << std::endl;
     }
     
     mempool.clear();
@@ -181,142 +240,188 @@ void Blockchain::setDatabase(BlockchainDB* database) {
     db = database;
 }
 
+// Add a method to set the balance mapping
+void Blockchain::setBalanceMapping(BalanceMapping* mapping) {
+    balanceMap = mapping;
+    std::cout << "Balance mapping " << (mapping ? "connected" : "disabled") << std::endl;
+}
+
+// Update balances when processing a block
+void Blockchain::updateBalancesForBlock(const Block& block) {
+    if (!balanceMap) return;
+    
+    for (const auto& tx : block.transactions) {
+        // Skip genesis transaction
+        if (tx.sender == "Genesis" && tx.receiver == "Genesis") continue;
+        
+        // Process the transaction to update balances
+        if (!balanceMap->processTransaction(tx.sender, tx.receiver, tx.amount)) {
+            std::cerr << "Failed to update balances for transaction " << tx.hash << std::endl;
+        }
+    }
+}
+
+// Verify a transaction has sufficient balance
+bool Blockchain::verifyTransactionBalance(const Transaction& tx) const {
+    if (tx.sender == "Genesis") {
+        // Genesis transactions or mining rewards are always valid
+        return true;
+    }
+    
+    if (!balanceMap) {
+        // Without balance mapping, we can't verify
+        return true;
+    }
+    
+    double balance = 0.0;
+    if (!balanceMap->getBalance(tx.sender, balance)) {
+        std::cerr << "Error: Could not retrieve balance for " << tx.sender << std::endl;
+        return false;
+    }
+    
+    // Check if sender has enough balance
+    if (balance < tx.amount) {
+        std::cerr << "Error: Insufficient balance. " << tx.sender 
+                  << " has " << balance << " but wants to send " << tx.amount << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
 // Add a method to load the blockchain from database
 void Blockchain::loadFromDatabase() {
-    if (!db) {
-        std::cerr << "No database connection available" << std::endl;
+    if (!db || !db->isOpen()) {
+        throw std::runtime_error("Cannot load blockchain: no database connection");
+    }
+    
+    // Clear the current chain
+    chain.clear();
+    
+    // We'll scan for blocks by index until we don't find any more
+    size_t index = 0;
+    bool foundBlocks = false;
+    
+    // Try to load blocks in sequence until no more blocks are found
+    while (true) {
+        // We need to create a minimal block that will be filled by getBlock
+        // Since Block doesn't have a default constructor, we need to create it with parameters
+        std::vector<Transaction> emptyTxs;
+        Block tempBlock(index, emptyTxs, "0x0", difficulty);
+        
+        // Try to get the block by index
+        if (db->getBlock(index, tempBlock)) {
+            // Block was found, add it to the chain
+            chain.push_back(tempBlock);
+            foundBlocks = true;
+            index++;
+        } else {
+            // No more blocks found, exit the loop
+            break;
+        }
+    }
+    
+    // If no blocks were found, initialize with genesis block
+    if (!foundBlocks) {
+        std::cout << "No blocks found in database, creating genesis block" << std::endl;
+        // Create a genesis block directly
+        std::vector<Transaction> genesisTransactions;
+        Transaction genesisTx("Genesis", "Genesis", 0);
+        genesisTx.hash = genesisTx.calculateHash();
+        genesisTransactions.push_back(genesisTx);
+        
+        // Create genesis block
+        Block genesisBlock(0, genesisTransactions, "0x0", difficulty);
+        genesisBlock.timestamp = GENESIS_TIMESTAMP;
+        genesisBlock.nonce = GENESIS_NONCE;
+        genesisBlock.hash = GENESIS_HASH;
+        
+        // Add to chain and save to database
+        chain.push_back(genesisBlock);
+        if (db) {
+            db->saveBlock(genesisBlock);
+        }
         return;
     }
     
-    // Clear existing chain except genesis block
-    if (!chain.empty()) {
-        Block genesisBlock = chain[0];
-        chain.clear();
-        chain.push_back(genesisBlock);
+    // Verify the loaded blockchain
+    if (!isValidChain()) {
+        throw std::runtime_error("Loaded blockchain is invalid");
     }
     
-    // Get all block keys
-    auto keys = db->getAllKeys("block:");
+    // Rebuild balances from transactions
+    rebuildBalancesFromTransactions();
+}
+
+// Helper method to rebuild balances from transactions
+void Blockchain::rebuildBalancesFromTransactions() {
+    if (!balanceMap || !db || !db->isOpen()) {
+        return;
+    }
     
-    // Sort keys to ensure blocks are loaded in order
-    std::sort(keys.begin(), keys.end(), [](const std::string& a, const std::string& b) {
-        // Extract block numbers for numeric comparison
-        int numA = std::stoi(a.substr(6)); // "block:".length() == 6
-        int numB = std::stoi(b.substr(6));
-        return numA < numB;
-    });
+    std::cout << "Rebuilding balances from transaction history..." << std::endl;
     
-    std::cout << "Found " << keys.size() << " blocks in database" << std::endl;
+    // Get all current balances and reset them to zero
+    auto allBalances = balanceMap->getAllBalances();
+    for (const auto& pair : allBalances) {
+        std::string address = pair.first;
+        balanceMap->updateBalance(address, 0.0);
+    }
     
-    // Keep track of previously loaded block hash for validation
-    std::string prevHash = chain.empty() ? "0x0" : chain.back().hash;
-    
-    // First pass: load blocks in order and validate basic structure
-    std::vector<Block> loadedBlocks;
-    
-    for (const auto& key : keys) {
-        int blockNumber = std::stoi(key.substr(6)); // "block:".length() == 6
-        
-        // Skip genesis block (already in chain)
-        if (blockNumber == 0 && !chain.empty()) {
-            std::cout << "Skipping genesis block (already loaded)" << std::endl;
-            continue;
+    // Process all transactions in order
+    for (const auto& block : chain) {
+        for (const auto& tx : block.transactions) {
+            balanceMap->processTransaction(tx.sender, tx.receiver, tx.amount);
         }
-        
-        try {
-            Block block(0, {}, "", difficulty); // Temporary block
+    }
+    
+    std::cout << "Balance rebuilding complete." << std::endl;
+}
+
+// Calculate the total supply of coins in the blockchain
+double Blockchain::getTotalSupply() const {
+    double totalSupply = 0.0;
+    
+    // If we have a balance mapping, we can use it to get the total supply
+    if (balanceMap) {
+        auto balances = balanceMap->getAllBalances();
+        for (const auto& [address, balance] : balances) {
+            totalSupply += balance;
+        }
+        return totalSupply;
+    }
+    
+    // If no balance mapping, manually calculate by traversing the blockchain
+    // This is less efficient but works as a fallback
+    std::map<std::string, double> balances;
+    
+    // Process all transactions in the blockchain
+    for (const auto& block : chain) {
+        for (const auto& tx : block.transactions) {
+            // Skip genesis transaction
+            if (tx.sender == "Genesis" && tx.receiver == "Genesis") {
+                continue;
+            }
             
-            if (db->getBlock(blockNumber, block)) {
-                // Basic validation
-                if (loadedBlocks.empty() && !chain.empty()) {
-                    // First loaded block should link to genesis
-                    if (block.previousHash != chain.back().hash) {
-                        std::cerr << "Warning: Block #" << blockNumber 
-                                << " does not link to genesis. Expected: " 
-                                << chain.back().hash << ", Got: " << block.previousHash << std::endl;
-                        // Still add it for now
-                    }
-                } else if (!loadedBlocks.empty()) {
-                    // Each subsequent block should link to previous
-                    if (block.previousHash != loadedBlocks.back().hash) {
-                        std::cerr << "Warning: Block #" << blockNumber 
-                                << " does not link to previous block. Expected: " 
-                                << loadedBlocks.back().hash << ", Got: " << block.previousHash << std::endl;
-                        // Still add it for now
-                    }
-                }
-                
-                // Additional validation: Check block's hash against its contents
-                std::string calculatedHash = block.calculateHash();
-                if (block.hash != calculatedHash) {
-                    std::cerr << "Warning: Block #" << blockNumber << " has invalid hash. "
-                            << "Stored: " << block.hash << ", Calculated: " << calculatedHash << std::endl;
-                    // We'll still add it, but be aware it might be corrupted
-                }
-                
-                loadedBlocks.push_back(block);
-                std::cout << "Loaded block #" << blockNumber << " with hash " << block.hash << std::endl;
+            // For minted coins (from Genesis), just add to receiver
+            if (tx.sender == "Genesis") {
+                balances[tx.receiver] += tx.amount;
             } else {
-                std::cerr << "Failed to load block " << key << ": " << db->getLastError() << std::endl;
-                
-                // Attempt to repair database by removing the corrupted entry
-                if (db->getLastError().find("Invalid block data") != std::string::npos) {
-                    std::cerr << "Attempting to remove corrupted block entry: " << key << std::endl;
-                    if (db->remove(key)) {
-                        std::cerr << "Successfully removed corrupted block entry" << std::endl;
-                    } else {
-                        std::cerr << "Failed to remove corrupted block entry: " << db->getLastError() << std::endl;
-                    }
-                }
+                // For regular transactions, subtract from sender and add to receiver
+                balances[tx.sender] -= tx.amount;
+                balances[tx.receiver] += tx.amount;
             }
-        } catch (const std::exception& e) {
-            std::cerr << "Error loading block #" << blockNumber << ": " << e.what() << std::endl;
-            // Continue to next block rather than failing entirely
+        }
+    }
+    
+    // Sum all positive balances
+    for (const auto& [address, balance] : balances) {
+        if (balance > 0) {
+            totalSupply += balance;
         }
     }
     
-    // Add loaded blocks to the chain
-    for (const auto& block : loadedBlocks) {
-        chain.push_back(block);
-    }
-    
-    std::cout << "Loaded " << chain.size() << " blocks from database" << std::endl;
-    
-    // Load mempool transactions
-    try {
-        auto txKeys = db->getAllKeys("tx:");
-        for (const auto& key : txKeys) {
-            // Skip transactions that are already in blocks
-            std::string txHash = key.substr(3); // "tx:".length() == 3
-            bool inChain = false;
-            
-            for (const auto& block : chain) {
-                for (const auto& tx : block.transactions) {
-                    if (tx.hash == txHash) {
-                        inChain = true;
-                        break;
-                    }
-                }
-                if (inChain) break;
-            }
-            
-            if (!inChain) {
-                Transaction tx("", "", 0);
-                if (db->getTransaction(txHash, tx)) {
-                    if (tx.isValid()) {
-                        mempool.push_back(tx);
-                        std::cout << "Loaded transaction " << txHash << " to mempool" << std::endl;
-                    } else {
-                        std::cerr << "Skipping invalid transaction " << txHash << std::endl;
-                    }
-                }
-            }
-        }
-        
-        std::cout << "Loaded " << mempool.size() << " transactions to mempool" << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Error loading mempool: " << e.what() << std::endl;
-    }
+    return totalSupply;
 }
 
 const time_t     Blockchain::GENESIS_TIMESTAMP = 1745026508;

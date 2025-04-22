@@ -346,3 +346,9 @@ std::vector<Transaction> Wallet::getTransactionHistory() const {
     
     return history;
 }
+
+void Wallet::synchronizeBalance(double newBalance) {
+    // Update the in-memory balance to match database value
+    balance = newBalance;
+    std::cout << "Wallet " << address << " balance synchronized to " << balance << std::endl;
+}

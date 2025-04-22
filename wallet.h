@@ -45,6 +45,9 @@ public:
     void setDatabase(BlockchainDB* database);
     bool updateBalance();
     std::vector<Transaction> getTransactionHistory() const;
+
+    // Method to synchronize wallet balance with the database
+    void synchronizeBalance(double newBalance);
 };
 
 #endif // WALLET_H

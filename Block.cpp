@@ -1,5 +1,6 @@
 #include "Block.h"
 #include "sha.h"
+#include "Blockchain.h" // Include for genesis block constants
 
 Block::Block(int blockNumber, std::vector<Transaction> txs, std::string prevHash, int diff) {
     try {
@@ -9,7 +10,17 @@ Block::Block(int blockNumber, std::vector<Transaction> txs, std::string prevHash
         nonce = 0;
         difficulty = diff < 1 ? 1 : diff;  // Ensure minimum difficulty of 1
         timestamp = time(nullptr);
-        hash = mineBlock();
+        
+        // Special handling for genesis block
+        if (blockNumber == 0) {
+            // For genesis block, use predefined values
+            timestamp = Blockchain::GENESIS_TIMESTAMP;
+            nonce = Blockchain::GENESIS_NONCE;
+            hash = Blockchain::GENESIS_HASH;
+        } else {
+            // For regular blocks, mine to find a valid hash
+            hash = mineBlock();
+        }
     } catch (const std::exception& e) {
         std::cerr << "ERROR in Block constructor: " << e.what() << std::endl;
         // Set defaults to avoid having an invalid block
@@ -26,6 +37,11 @@ Block::Block(int blockNumber, std::vector<Transaction> txs, std::string prevHash
 }
 
 std::string Block::calculateHash() const {
+    // For genesis block, don't recalculate the hash - it has a fixed value
+    if (blockNumber == 0) {
+        return Blockchain::GENESIS_HASH;
+    }
+    
     std::string data = std::to_string(blockNumber) + std::to_string(timestamp) + previousHash + std::to_string(nonce);
     for (const auto& tx : transactions) {
         data += tx.sender + tx.receiver + std::to_string(tx.amount);

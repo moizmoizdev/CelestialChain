@@ -4,11 +4,14 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <algorithm> // Add for sort and min functions
 #include "NetworkNode.h"
 #include "BlockchainDB.h"
 #include "Blockchain.h"
 #include "wallet.h"
 #include "Types.h"
+#include "balanceMapping.h"
+#include "explorer.h"
 #include <stdexcept>
 #include <direct.h> // For _mkdir on Windows
 using namespace std;
@@ -47,6 +50,8 @@ void printFullNodeMenu() {
     cout << "6. Connect to peer" << endl;
     cout << "7. Request blockchain from peers" << endl;
     cout << "8. View connected peers" << endl;
+    cout << "9. View blockchain statistics" << endl;
+    cout << "10. Visit Explorer" << endl;
     cout << "0. Exit" << endl;
     cout << "====================================" << endl;
     cout << "Enter your choice: ";
@@ -61,6 +66,8 @@ void printWalletNodeMenu() {
     cout << "5. Connect to peer" << endl;
     cout << "6. Request blockchain from peers" << endl;
     cout << "7. View connected peers" << endl;
+    cout << "8. View blockchain statistics" << endl;
+    cout << "9. Visit Explorer" << endl;
     cout << "0. Exit" << endl;
     cout << "-----------------------------------" << endl;
     cout << "Enter your choice: ";
@@ -74,6 +81,7 @@ int main(int argc, char* argv[]) {
     int port = 8000;
     NodeType nodeType = NodeType::FULL_NODE;
     int difficulty = 4;
+    bool cleanStart = false;
 
     // Parse command line arguments
     for (int i = 1; i < argc; ++i) {
@@ -91,12 +99,15 @@ int main(int argc, char* argv[]) {
             }
         } else if (arg == "--difficulty" && i + 1 < argc) {
             difficulty = stoi(argv[++i]);
+        } else if (arg == "--clean" || arg == "--fresh") {
+            cleanStart = true;
         } else if (arg == "--help") {
             cout << "Usage: " << argv[0] << " [OPTIONS]\n";
             cout << "  --host HOST       Set the host address\n";
             cout << "  --port PORT       Set the port number\n";
             cout << "  --type TYPE       Set the node type (full or wallet)\n";
             cout << "  --difficulty DIFF Set the mining difficulty\n";
+            cout << "  --clean           Start with a fresh blockchain (ignore existing database)\n";
             cout << "  --help            Display this help message\n";
             return 0;
         }
@@ -115,6 +126,9 @@ int main(int argc, char* argv[]) {
     // Initializing Database
     cout << "Opening database at " << dbPath << "..." << endl;
     BlockchainDB db(dbPath);
+    BlockchainDB* dbPtr = nullptr;
+    BalanceMapping* balanceMapPtr = nullptr;
+    
     if (!db.isOpen()) {
         cout << "Database error: " << db.getLastError() << endl;
         cout << "Do you want to continue without database? (y/n): ";
@@ -125,12 +139,51 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        // dbPtr remains nullptr - we'll operate without database
+        cout << "Running without database functionality." << endl;
     } else {
         cout << "Database opened successfully." << endl;
+        dbPtr = &db;  // Set the pointer to the valid database
+        
+        // Verify database integrity
+        cout << "Verifying database integrity..." << endl;
+        bool dbIntegrity = db.verifyDatabaseIntegrity(true);
+        if (!dbIntegrity) {
+            cout << "Database integrity issues were detected and attempt was made to repair." << endl;
+        }
+        
+        // Initialize the balance mapping only if we have a valid database
+        cout << "Initializing balance mapping..." << endl;
+        BalanceMapping balanceMap(&db);
+        balanceMapPtr = &balanceMap;
+        
+        // Initialize blockchain explorer
+        cout << "Initializing blockchain explorer..." << endl;
+        Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
+        
+        // Connect database and balance mapping to blockchain
+        blockchain.setDatabase(dbPtr);
+        blockchain.setBalanceMapping(balanceMapPtr);
+        
+        if (!cleanStart) {
+            // Load blockchain data from database
+            cout << "Loading blockchain data from database..." << endl;
+            try {
+                blockchain.loadFromDatabase();
+                cout << "Blockchain loaded with " << blockchain.getChainSize() << " blocks." << endl;
+            } catch (const exception& e) {
+                cout << "Error loading blockchain from database: " << e.what() << endl;
+                cout << "Starting with fresh blockchain." << endl;
+            }
+        } else {
+            cout << "Clean start requested. Starting with a fresh blockchain." << endl;
+        }
     }
     
     cout << "Creating wallet for this node..." << endl;
     Wallet nodeWallet;
+    // Connect the wallet to the database for transaction history
+    nodeWallet.setDatabase(&db);
     cout << "Wallet created with address: " << nodeWallet.getAddress() << endl;
     
     // Initializing network manager with the blockchain and wallet
@@ -173,8 +226,6 @@ int main(int argc, char* argv[]) {
         clearScreen();
         if (nodeType == NodeType::FULL_NODE)
         {
-            cout<<"Synchorizing requesting blockchain from peers..."<<endl;
-            networkManager.requestBlockchain();
             printFullNodeMenu();
         }
         else
@@ -261,7 +312,7 @@ int main(int argc, char* argv[]) {
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
                     networkManager.requestBlockchain();
-                } else {
+                } else if (nodeType == NodeType::WALLET_NODE) {
                     clearScreen();
                     auto peers = networkManager.getConnectedPeers();
                     for (auto& p : peers)
@@ -271,9 +322,79 @@ int main(int argc, char* argv[]) {
             case 8:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    auto peers = networkManager.getConnectedPeers();
-                    for (auto& p : peers)
-                        cout << p.id << " @ " << p.address << ":" << p.port << endl;
+                    // Display blockchain statistics
+                    if (dbPtr) {
+                        Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
+                        
+                        cout << "===== Blockchain Statistics =====" << endl;
+                        cout << "Total Blocks: " << explorer.getBlockCount() << endl;
+                        cout << "Total Transactions: " << explorer.getTransactionCount() << endl;
+                        cout << "Unique Addresses: " << balanceMapPtr->getAllBalances().size() << endl;
+                        cout << "Total Supply: " << blockchain.getTotalSupply() << endl;
+                        
+                        // Display wallet balance and transaction history
+                        cout << "\n===== Your Wallet =====" << endl;
+                        cout << "Address: " << nodeWallet.getAddress() << endl;
+                        cout << "Balance: " << explorer.getAddressBalance(nodeWallet.getAddress()) << endl;
+                        
+                        // Display transactions directly
+                        explorer.displayAddressDetails(nodeWallet.getAddress());
+                    } else {
+                        cout << "Explorer requires database connection to display statistics." << endl;
+                    }
+                }
+                break;
+            case 9:
+                if (nodeType == NodeType::FULL_NODE) {
+                    clearScreen();
+                    // Display blockchain statistics
+                    if (dbPtr) {
+                        Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
+                        
+                        cout << "===== Blockchain Statistics =====" << endl;
+                        cout << "Total Blocks: " << explorer.getBlockCount() << endl;
+                        cout << "Total Transactions: " << explorer.getTransactionCount() << endl;
+                        cout << "Unique Addresses: " << balanceMapPtr->getAllBalances().size() << endl;
+                        cout << "Total Supply: " << blockchain.getTotalSupply() << endl;
+                        
+                        // Display top balances
+                        auto balances = balanceMapPtr->getAllBalances();
+                        // Convert to vector for sorting
+                        vector<pair<string, double>> balanceList(balances.begin(), balances.end());
+                        // Sort by balance (highest first)
+                        sort(balanceList.begin(), balanceList.end(), 
+                            [](const auto& a, const auto& b) { return a.second > b.second; });
+                        
+                        cout << "\n===== Top 5 Richest Addresses =====" << endl;
+                        size_t count = min(balanceList.size(), size_t(5));
+                        for (size_t i = 0; i < count; i++) {
+                            cout << (i+1) << ". " << balanceList[i].first << ": " 
+                                 << balanceList[i].second << endl;
+                        }
+                    } else {
+                        cout << "Explorer requires database connection to display statistics." << endl;
+                    }
+                } else if (nodeType == NodeType::WALLET_NODE) {
+                    clearScreen();
+                    // Launch Explorer for wallet nodes
+                    if (dbPtr) {
+                        Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
+                        explorer.showExplorerMenu(nodeWallet.getAddress());
+                    } else {
+                        cout << "Explorer requires database connection." << endl;
+                    }
+                }
+                break;
+            case 10:
+                if (nodeType == NodeType::FULL_NODE) {
+                    clearScreen();
+                    // Launch Explorer for full nodes
+                    if (dbPtr) {
+                        Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
+                        explorer.showExplorerMenu();
+                    } else {
+                        cout << "Explorer requires database connection." << endl;
+                    }
                 }
                 break;
             case 0:

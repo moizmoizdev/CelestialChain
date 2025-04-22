@@ -17,7 +17,7 @@ LDFLAGS = -L"$(OPENSSL_LIB_PATH)" -L"$(LEVELDB_LIB_PATH)" -pthread -lws2_32 -lms
 TARGET_NODE = blockchain_node
 
 # Source files for the node application
-NODE_SRCS = NodeApp.cpp NetworkNode.cpp Blockchain.cpp Block.cpp Transaction.cpp wallet.cpp sha.cpp crypto_utils.cpp BlockchainDB.cpp
+NODE_SRCS = NodeApp.cpp NetworkNode.cpp Blockchain.cpp Block.cpp Transaction.cpp wallet.cpp sha.cpp crypto_utils.cpp BlockchainDB.cpp balanceMapping.cpp explorer.cpp
 
 # Object files
 NODE_OBJS = $(NODE_SRCS:.cpp=.o)

@@ -9,6 +9,7 @@
 #include "wallet.h"
 #include "Types.h"
 #include "BlockchainDB.h"
+#include "balanceMapping.h"
 
 class Blockchain {
 private:
@@ -17,11 +18,14 @@ private:
     std::vector<Wallet*> wallets;  // To store wallet pointers for updating balances
     int difficulty;
     BlockchainDB* db;  // Database connection
+    BalanceMapping* balanceMap; // Balance tracking
 
+public:
+    // Genesis block constants - moved to public section
     static const time_t GENESIS_TIMESTAMP;
     static const int     GENESIS_NONCE;
     static const std::string GENESIS_HASH;
-public:
+    
     Blockchain(int difficulty = 4) ;
     
     void addBlock(const std::vector<Transaction>& transactions);
@@ -40,10 +44,19 @@ public:
     void printBlockchain() const;
     void printMempool() const;
     bool isValidChain() const;
+    
+    // Statistics methods
+    double getTotalSupply() const;
 
     // Database operations
     void setDatabase(BlockchainDB* database);
     void loadFromDatabase();
+    void rebuildBalancesFromTransactions();
+    
+    // Balance mapping operations
+    void setBalanceMapping(BalanceMapping* mapping);
+    void updateBalancesForBlock(const Block& block);
+    bool verifyTransactionBalance(const Transaction& tx) const;
 };
 
 #endif // BLOCKCHAIN_H 

@@ -4,7 +4,7 @@
 #include <sstream>
 #include <random>
 #include <stdexcept>
-#include <cmath>  // For std::pow function
+#include <cmath>  
 
 // NetworkMessage implementation
 std::string NetworkMessage::serialize() const {
@@ -666,20 +666,20 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             bool chainValid = true;
             
             try {
-                for (int i = 0; i < blockCount; i++) {
-                    if (currentPos + 6 >= parts.size()) {
-                        std::cerr << "Invalid blockchain data: missing block data" << std::endl;
+            for (int i = 0; i < blockCount; i++) {
+                if (currentPos + 6 >= parts.size()) {
+                    std::cerr << "Invalid blockchain data: missing block data" << std::endl;
                         chainValid = false;
-                        break;
-                    }
-                    
-                    int blockNumber = std::stoi(parts[currentPos++]);
-                    time_t timestamp = std::stoul(parts[currentPos++]);
-                    std::string previousHash = parts[currentPos++];
-                    std::string hash = parts[currentPos++];
-                    int nonce = std::stoi(parts[currentPos++]);
-                    int difficulty = std::stoi(parts[currentPos++]);
-                    int txCount = std::stoi(parts[currentPos++]);
+                    break;
+                }
+                
+                int blockNumber = std::stoi(parts[currentPos++]);
+                time_t timestamp = std::stoul(parts[currentPos++]);
+                std::string previousHash = parts[currentPos++];
+                std::string hash = parts[currentPos++];
+                int nonce = std::stoi(parts[currentPos++]);
+                int difficulty = std::stoi(parts[currentPos++]);
+                int txCount = std::stoi(parts[currentPos++]);
                     
                     // Validate block number
                     if (i != blockNumber) {
@@ -687,25 +687,25 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
                         chainValid = false;
                         break;
                     }
-                    
-                    std::vector<Transaction> transactions;
-                    
-                    for (int j = 0; j < txCount; j++) {
-                        if (currentPos + 6 >= parts.size()) {
-                            std::cerr << "Invalid blockchain data: missing transaction data" << std::endl;
+                
+                std::vector<Transaction> transactions;
+                
+                for (int j = 0; j < txCount; j++) {
+                    if (currentPos + 6 >= parts.size()) {
+                        std::cerr << "Invalid blockchain data: missing transaction data" << std::endl;
                             chainValid = false;
-                            break;
-                        }
-                        
-                        std::string sender = parts[currentPos++];
-                        std::string senderPublicKey = parts[currentPos++];
-                        std::string receiver = parts[currentPos++];
-                        double amount = std::stod(parts[currentPos++]);
-                        unsigned long txTimestamp = std::stoul(parts[currentPos++]);
-                        std::string txHash = parts[currentPos++];
-                        std::string signature = parts[currentPos++];
-                        
-                        Transaction tx(sender, senderPublicKey, receiver, amount, txHash, signature, txTimestamp);
+                        break;
+                    }
+                    
+                    std::string sender = parts[currentPos++];
+                    std::string senderPublicKey = parts[currentPos++];
+                    std::string receiver = parts[currentPos++];
+                    double amount = std::stod(parts[currentPos++]);
+                    unsigned long txTimestamp = std::stoul(parts[currentPos++]);
+                    std::string txHash = parts[currentPos++];
+                    std::string signature = parts[currentPos++];
+                    
+                    Transaction tx(sender, senderPublicKey, receiver, amount, txHash, signature, txTimestamp);
                         
                         // Validate transaction
                         if (!tx.isValid()) {
@@ -714,26 +714,29 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
                             break;
                         }
                         
-                        transactions.push_back(tx);
-                    }
+                    transactions.push_back(tx);
+                }
                     
                     if (!chainValid) break;
-                    
-                    Block block(blockNumber, transactions, previousHash, difficulty);
-                    block.timestamp = timestamp;
-                    block.nonce = nonce;
-                    block.hash = hash;
+                
+                Block block(blockNumber, transactions, previousHash, difficulty);
+                block.timestamp = timestamp;
+                block.nonce = nonce;
+                block.hash = hash;
                     
                     // Validate block hash
                     std::string calculatedHash = block.calculateHash();
-                    if (block.blockNumber==0){
-                        if (block.hash != "0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80") {
+                    if (blockNumber == 0) {
+                        // Special handling for genesis block - use the hardcoded hash value
+                        if (hash != "0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80") {
                             std::cerr << "Genesis block hash mismatch" << std::endl;
+                            std::cerr << "Expected: 0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80" << std::endl;
+                            std::cerr << "Got: " << hash << std::endl;
                             chainValid = false;
                             break;
                         }
-                    }
-                    if (hash != calculatedHash && block.blockNumber!=0) {
+                    } else if (hash != calculatedHash) {
+                        // For non-genesis blocks, do the normal hash verification
                         std::cerr << "Block hash mismatch in block " << blockNumber << std::endl;
                         std::cerr << "Expected: " << calculatedHash << std::endl;
                         std::cerr << "Got: " << hash << std::endl;
@@ -751,10 +754,10 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
                             break;
                         }
                     }
-                    
-                    receivedChain.push_back(block);
-                }
                 
+                receivedChain.push_back(block);
+            }
+            
                 // Implement the longest chain algorithm
                 if (chainValid && !receivedChain.empty()) {
                     // Check if the genesis block matches our genesis block
@@ -781,7 +784,7 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
                         ourTotalWork += std::pow(2.0, block.difficulty);
                     }
                     
-                    for (const auto& block : receivedChain) {
+                for (const auto& block : receivedChain) {
                         receivedTotalWork += std::pow(2.0, block.difficulty);
                     }
                     

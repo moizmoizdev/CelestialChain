@@ -552,4 +552,196 @@ bool BlockchainDB::verifyDatabaseIntegrity(bool repairCorrupted) {
     std::cout << "  Transactions with errors: " << txErrorCount << std::endl;
     
     return !hasErrors;
+}
+
+// Wallet balance operations
+bool BlockchainDB::updateBalance(const std::string& address, double newBalance) {
+    if (!isOpen()) return false;
+    
+    std::string key = "balance:" + address;
+    std::string value = std::to_string(newBalance);
+    
+    return put(key, value);
+}
+
+bool BlockchainDB::getBalance(const std::string& address, double& balance) const {
+    if (!isOpen()) return false;
+    
+    std::string key = "balance:" + address;
+    std::string value;
+    
+    if (!get(key, value)) {
+        balance = 0.0; // Default balance for new addresses
+        return true;
+    }
+    
+    try {
+        balance = std::stod(value);
+        return true;
+    } catch (const std::exception& e) {
+        lastError = "Failed to parse balance: " + std::string(e.what());
+        return false;
+    }
+}
+
+bool BlockchainDB::addBalanceJournalEntry(const std::string& address, const std::string& txHash, 
+                                        double amount, bool isCredit, size_t blockHeight) {
+    if (!isOpen()) return false;
+    
+    BalanceJournalEntry entry;
+    entry.address = address;
+    entry.txHash = txHash;
+    entry.amount = amount;
+    entry.isCredit = isCredit;
+    entry.blockHeight = blockHeight;
+    entry.timestamp = time(nullptr);
+    
+    // Use timestamp to ensure unique keys even with multiple transactions in same block
+    std::string key = "journal:" + address + ":" + std::to_string(entry.timestamp) + ":" + txHash;
+    std::string value = serializeJournalEntry(entry);
+    
+    return put(key, value);
+}
+
+std::vector<BalanceJournalEntry> BlockchainDB::getBalanceJournal(const std::string& address) const {
+    std::vector<BalanceJournalEntry> journal;
+    if (!isOpen()) return journal;
+    
+    std::string prefix = "journal:" + address + ":";
+    std::vector<std::string> keys = getAllKeys(prefix);
+    
+    for (const auto& key : keys) {
+        std::string value;
+        if (get(key, value)) {
+            journal.push_back(deserializeJournalEntry(value));
+        }
+    }
+    
+    // Sort by timestamp (oldest first)
+    std::sort(journal.begin(), journal.end(), [](const BalanceJournalEntry& a, const BalanceJournalEntry& b) {
+        return a.timestamp < b.timestamp;
+    });
+    
+    return journal;
+}
+
+// World state operations
+bool BlockchainDB::saveWorldState(size_t blockHeight) {
+    if (!isOpen()) return false;
+    
+    // Get all current balances
+    auto balances = getAllBalances();
+    
+    // Serialize and save
+    std::string key = "worldstate:" + std::to_string(blockHeight);
+    std::string value = serializeWorldState(balances);
+    
+    return put(key, value);
+}
+
+bool BlockchainDB::loadWorldState(size_t blockHeight, std::map<std::string, double>& balances) const {
+    if (!isOpen()) return false;
+    
+    std::string key = "worldstate:" + std::to_string(blockHeight);
+    std::string value;
+    
+    if (!get(key, value)) {
+        return false;
+    }
+    
+    balances = deserializeWorldState(value);
+    return true;
+}
+
+std::map<std::string, double> BlockchainDB::getAllBalances() const {
+    std::map<std::string, double> balances;
+    if (!isOpen()) return balances;
+    
+    std::string prefix = "balance:";
+    std::vector<std::string> keys = getAllKeys(prefix);
+    
+    for (const auto& key : keys) {
+        std::string value;
+        if (get(key, value)) {
+            try {
+                std::string address = key.substr(prefix.length());
+                double balance = std::stod(value);
+                balances[address] = balance;
+            } catch (const std::exception& e) {
+                // Skip invalid entries
+            }
+        }
+    }
+    
+    return balances;
+}
+
+// Helper methods for serialization/deserialization
+std::string BlockchainDB::serializeJournalEntry(const BalanceJournalEntry& entry) const {
+    // Format: address|txHash|amount|isCredit|blockHeight|timestamp
+    return entry.address + "|" + 
+           entry.txHash + "|" + 
+           std::to_string(entry.amount) + "|" + 
+           (entry.isCredit ? "1" : "0") + "|" + 
+           std::to_string(entry.blockHeight) + "|" + 
+           std::to_string(entry.timestamp);
+}
+
+BalanceJournalEntry BlockchainDB::deserializeJournalEntry(const std::string& data) const {
+    BalanceJournalEntry entry;
+    std::vector<std::string> parts;
+    std::string part;
+    std::istringstream stream(data);
+    
+    while (std::getline(stream, part, '|')) {
+        parts.push_back(part);
+    }
+    
+    if (parts.size() >= 6) {
+        entry.address = parts[0];
+        entry.txHash = parts[1];
+        try {
+            entry.amount = std::stod(parts[2]);
+            entry.isCredit = (parts[3] == "1");
+            entry.blockHeight = std::stoull(parts[4]);
+            entry.timestamp = std::stoll(parts[5]);
+        } catch (const std::exception& e) {
+            // Use defaults if parsing fails
+            entry.amount = 0.0;
+            entry.isCredit = false;
+            entry.blockHeight = 0;
+            entry.timestamp = 0;
+        }
+    }
+    
+    return entry;
+}
+
+std::string BlockchainDB::serializeWorldState(const std::map<std::string, double>& balances) const {
+    std::stringstream ss;
+    for (const auto& pair : balances) {
+        ss << pair.first << ":" << pair.second << "\n";
+    }
+    return ss.str();
+}
+
+std::map<std::string, double> BlockchainDB::deserializeWorldState(const std::string& data) const {
+    std::map<std::string, double> balances;
+    std::istringstream stream(data);
+    std::string line;
+    
+    while (std::getline(stream, line)) {
+        size_t pos = line.find(':');
+        if (pos != std::string::npos) {
+            std::string address = line.substr(0, pos);
+            try {
+                double balance = std::stod(line.substr(pos + 1));
+                balances[address] = balance;
+            } catch (const std::exception& e) {
+                // Skip invalid entries
+            }
+        }
+    }
+    
+    return balances;
 } 

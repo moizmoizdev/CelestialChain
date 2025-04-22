@@ -1,86 +1,45 @@
-# Prerequisites
-*.d
 
-# Compiled Object files
-*.slo
-*.lo
 *.o
-*.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
 *.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
 *.lib
-
-# Executables
 *.exe
-*.out
-*.app
-
-# Build directories
-build/
 Debug/
 Release/
 x64/
 x86/
+# Exclude all folders
+*/
 
-# IDE specific files
 .vs/
 .vscode/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
 
-# Dependency directories
+
 vcpkg/
 
-# Temporary files
 *.log
 *.tlog
 *.tmp
 *.temp
 
-# Specific to your project
 blockchain_demo
 blockchain_node
 compile.bat
 run_demo.bat
 
-# Database files
 *.db
 *.leveldb/
 
-# Visual Studio files
 .vs/
 *.user
 *.filters
 *.vcxproj
 
-# Compiled files
 *.exe
-*.obj
 *.dll
-*.pdb
 
-# Dependencies
 packages/
-#leveldb folder
+
 leveldb/
 
-# Archives
+
 *.zip 

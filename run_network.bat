@@ -13,17 +13,24 @@ set CLEAN_FLAG=
 if "%1"=="--clean" set CLEAN_FLAG=--clean
 if "%1"=="--fresh" set CLEAN_FLAG=--clean
 
+if defined CLEAN_FLAG (
+    echo NOTICE: Starting with fresh blockchain data (ignoring existing database)
+) else (
+    echo Using existing blockchain data if available
+)
+
+echo.
 echo Starting node on port 8000 (Full Node)...
 start "Blockchain Node 8000" cmd /k "blockchain_node.exe --type full --port 8000 --host 127.0.0.1 %CLEAN_FLAG%"
 
 REM Wait for the first node to start up
-timeout /t 5 /nobreak
+timeout /t 3 /nobreak
 
 echo Starting node on port 8001 (Full Node)...
 start "Blockchain Node 8001" cmd /k "blockchain_node.exe --type full --port 8001 --host 127.0.0.1 %CLEAN_FLAG%"
 
 REM Wait before starting the next node
-timeout /t 5 /nobreak
+timeout /t 4 /nobreak
 
 echo Starting node on port 8005 (Full Node)...
 start "Blockchain Node 8005" cmd /k "blockchain_node.exe --type full --port 8005 --host 127.0.0.1 %CLEAN_FLAG%"
