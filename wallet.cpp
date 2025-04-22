@@ -55,9 +55,13 @@ Wallet::Wallet(BlockchainDB* database) : balance(0.0), db(database), nodeHost(""
 Wallet::Wallet(const std::string& host, int port, BlockchainDB* database) 
     : balance(0.0), db(database), nodeHost(host), nodePort(port) {
     
+    std::string walletFilePath = getNodeWalletFilePath();
+    std::cout << "Looking for wallet file: " << walletFilePath << std::endl;
+    
     // Try to load from host:port first
     if (!loadFromHostPort()) {
         // If not found, generate a new wallet and save it
+        std::cout << "Generating new wallet for " << host << ":" << port << std::endl;
         generateKeyPair();
         saveToIniFile();
     }
@@ -248,12 +252,12 @@ bool Wallet::saveToIniFile() const {
     EVP_PKEY_free(pkey);
     BIO_free(bio);
 
-    // Write wallet data
-    file << "[wallet]\n";
-    file << "private_key=" << privKey << "\n";
-    file << "public_key=" << publicKey << "\n";
-    file << "address=" << address << "\n";
-    file << "balance=" << balance << "\n";
+    // Write wallet data in the exact format we expect when loading
+    file << "[wallet]" << std::endl;
+    file << "private_key=" << privKey;  // Note: privKey already includes a newline
+    file << "public_key=" << publicKey << std::endl;
+    file << "address=" << address << std::endl;
+    file << "balance=" << balance << std::endl;
 
     file.close();
     std::cout << "Wallet saved to " << getIniFilePath() << std::endl;
@@ -388,7 +392,14 @@ std::string Wallet::getNodeWalletFilePath() const {
         return "";
     }
     
-    std::string hostSanitized = sanitizeForFilename(nodeHost);
+    // Replace dots and colons with underscores in the host name
+    std::string hostSanitized = nodeHost;
+    for (char& c : hostSanitized) {
+        if (c == '.' || c == ':') {
+            c = '_';
+        }
+    }
+    
     return "wallets/" + hostSanitized + "_" + std::to_string(nodePort) + ".ini";
 }
 
@@ -405,45 +416,88 @@ bool Wallet::loadFromHostPort() {
         std::cerr << "No existing wallet found for " << nodeHost << ":" << nodePort << std::endl;
         return false;
     }
+    
+    // Read the entire file content
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string fileContent = buffer.str();
     file.close();
     
-    // Instead of extracting the address and calling loadFromIniFile,
-    // directly load the wallet data from the node-specific file
-    std::string line;
+    // Parse the wallet data
     std::string section;
     std::string privKey;
-    std::ifstream readFile(filePath);
+    bool inPrivateKey = false;
     
-    while (std::getline(readFile, line)) {
+    std::istringstream iss(fileContent);
+    std::string line;
+    
+    while (std::getline(iss, line)) {
         // Skip empty lines and comments
         if (line.empty() || line[0] == ';') continue;
-
+        
         // Check for section header
         if (line[0] == '[') {
             section = line.substr(1, line.find(']') - 1);
             continue;
         }
-
-        // Parse key-value pairs
-        size_t pos = line.find('=');
-        if (pos != std::string::npos) {
-            std::string key = line.substr(0, pos);
-            std::string value = line.substr(pos + 1);
-
-            if (section == "wallet") {
-                if (key == "private_key") {
-                    privKey = value;
-                } else if (key == "public_key") {
-                    publicKey = value;
-                } else if (key == "address") {
-                    address = value;
-                } else if (key == "balance") {
-                    balance = std::stod(value);
+        
+        if (section == "wallet") {
+            // Start of private key block
+            if (line.find("private_key=") == 0) {
+                privKey = line.substr(12); // Skip "private_key="
+                inPrivateKey = true;
+                continue;
+            }
+            
+            // Inside private key block
+            if (inPrivateKey) {
+                // End of private key
+                if (line.find("public_key=") == 0) {
+                    inPrivateKey = false;
+                    publicKey = line.substr(11); // Skip "public_key="
+                } 
+                // Handle address line
+                else if (line.find("address=") == 0) {
+                    inPrivateKey = false;
+                    address = line.substr(8); // Skip "address="
+                }
+                // Handle balance line 
+                else if (line.find("balance=") == 0) {
+                    inPrivateKey = false;
+                    try {
+                        balance = std::stod(line.substr(8)); // Skip "balance="
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error parsing balance: " << e.what() << std::endl;
+                        balance = 0.0;
+                    }
+                }
+                // Still in private key block
+                else {
+                    privKey += "\n" + line;
+                }
+            } 
+            // Not in private key, handle other fields
+            else if (line.find("public_key=") == 0) {
+                publicKey = line.substr(11);
+            }
+            else if (line.find("address=") == 0) {
+                address = line.substr(8);
+            }
+            else if (line.find("balance=") == 0) {
+                try {
+                    balance = std::stod(line.substr(8));
+                } catch (const std::exception& e) {
+                    std::cerr << "Error parsing balance: " << e.what() << std::endl;
+                    balance = 0.0;
                 }
             }
         }
     }
-    readFile.close();
+    
+    std::cout << "Read wallet data from file:" << std::endl;
+    std::cout << "Address: " << address << std::endl;
+    std::cout << "Public Key: " << (publicKey.length() > 20 ? publicKey.substr(0, 20) + "..." : publicKey) << std::endl;
+    std::cout << "Private Key Length: " << privKey.length() << " bytes" << std::endl;
     
     if (address.empty() || publicKey.empty() || privKey.empty()) {
         std::cerr << "Failed to read complete wallet data from: " << filePath << std::endl;
@@ -456,18 +510,19 @@ bool Wallet::loadFromHostPort() {
         std::cerr << "Failed to create BIO" << std::endl;
         return false;
     }
-
+    
     EVP_PKEY* pkey = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
     BIO_free(bio);
-
+    
     if (!pkey) {
         std::cerr << "Failed to read private key" << std::endl;
+        std::cerr << "Private key content (first 50 chars): " << privKey.substr(0, 50) << "..." << std::endl;
         return false;
     }
-
+    
     key_pair = EVP_PKEY_get1_EC_KEY(pkey);
     EVP_PKEY_free(pkey);
-
+    
     if (!key_pair) {
         std::cerr << "Failed to get EC key from EVP_PKEY" << std::endl;
         return false;

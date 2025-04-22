@@ -18,6 +18,7 @@ A complete implementation of a blockchain in C++ that demonstrates the core conc
 - Support for two types of nodes:
   - Full Nodes: Complete blockchain functionality with mining capabilities
   - Wallet Nodes: Transaction creation and wallet management without mining
+- Persistent wallet storage with automatic loading/saving of wallet files
 
 ## Requirements
 
@@ -165,6 +166,88 @@ Or use the batch script:
 ```bash
 ./run_network.bat
 ``` 
+
+## Testing the Longest Chain Algorithm
+
+The blockchain implements the "longest chain rule" based on accumulated proof of work. To test this functionality:
+
+1. **Start separate node groups**:
+   ```bash
+   # Start first node
+   ./blockchain_node --port 8000 --type full --difficulty 4
+   
+   # Start second node (don't connect it to first yet)
+   ./blockchain_node --port 9000 --type full --difficulty 4
+   ```
+
+2. **Create chains of different lengths**:
+   - In first node (port 8000), mine several blocks (3-4)
+   - In second node (port 9000), mine 1-2 blocks
+
+3. **Connect the nodes**:
+   - From either node, choose the option to connect to the other node
+
+4. **Observe chain synchronization**:
+   - The node with the shorter chain should adopt the longer chain
+   - Check logs to see chain replacement process
+
+5. **Advanced test - Different Difficulties**:
+   ```bash
+   # Start first node with higher difficulty
+   ./blockchain_node --port 8000 --type full --difficulty 6
+   
+   # Start second node with lower difficulty  
+   ./blockchain_node --port 9000 --type full --difficulty 3
+   ```
+   - Mine more blocks on second node (due to lower difficulty)
+   - Mine fewer blocks on first node
+   - Connect them and observe whether the chain with more total work (sum of 2^difficulty) is chosen
+   
+## Database Persistence
+
+The blockchain uses LevelDB for persistent storage of all blocks and transactions:
+
+1. **Database Location**:
+   - Each node stores data in a separate directory based on host:port
+   - Default location: `./Storage_127.0.0.1_PORT/`
+
+2. **Clean Start**:
+   - To start with a clean blockchain: `./blockchain_node --clean`
+   - Or for multiple nodes: `./run_network.bat --clean`
+
+3. **Testing Persistence**:
+   - Start nodes and mine blocks
+   - Exit all nodes
+   - Restart the nodes without the `--clean` flag
+   - Verify that the blockchain state is preserved
+
+4. **Database Verification**:
+   - The system automatically verifies database integrity on startup
+   - Detects and attempts to repair corrupted entries 
+
+## Wallet Persistence
+
+The blockchain maintains wallet persistence across sessions:
+
+1. **Wallet File Location**:
+   - Each node stores its wallet in a separate file based on host:port
+   - Default location: `./wallets/127_0_0_1_PORT.ini`
+
+2. **Wallet File Format**:
+   - INI-style format containing:
+     - Wallet address
+     - Public key
+     - Private key (securely stored)
+     - Last known balance
+
+3. **Automatic Management**:
+   - On first run, a new wallet is generated and saved
+   - On subsequent runs, the existing wallet is loaded
+   - Balance is synchronized with the blockchain database
+
+4. **Node-Specific Wallets**:
+   - Each node maintains its own unique wallet
+   - This allows testing transfers between nodes on the same machine
 
 ## Testing the Longest Chain Algorithm
 

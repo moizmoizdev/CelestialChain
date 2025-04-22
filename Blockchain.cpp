@@ -198,12 +198,12 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
         
         // And process other transactions
         for (const auto& tx : mempool) {
-            for (auto& wallet : wallets) {
-                if (wallet->getAddress() == tx.receiver) {
-                    wallet->receiveMoney(tx.amount);
-                    break;
-                }
+        for (auto& wallet : wallets) {
+            if (wallet->getAddress() == tx.receiver) {
+                wallet->receiveMoney(tx.amount);
+                break;
             }
+        }
         }
     }
     
@@ -462,8 +462,8 @@ double Blockchain::getTotalSupply() const {
     std::map<std::string, double> balances;
     
     // Process all transactions in the blockchain
-    for (const auto& block : chain) {
-        for (const auto& tx : block.transactions) {
+            for (const auto& block : chain) {
+                for (const auto& tx : block.transactions) {
             // Skip genesis transaction
             if (tx.sender == "Genesis" && tx.receiver == "Genesis") {
                 continue;
@@ -472,13 +472,13 @@ double Blockchain::getTotalSupply() const {
             // For minted coins (from Genesis), just add to receiver
             if (tx.sender == "Genesis") {
                 balances[tx.receiver] += tx.amount;
-            } else {
+                    } else {
                 // For regular transactions, subtract from sender and add to receiver
                 balances[tx.sender] -= tx.amount;
                 balances[tx.receiver] += tx.amount;
+                    }
+                }
             }
-        }
-    }
     
     // Sum all positive balances
     for (const auto& [address, balance] : balances) {
