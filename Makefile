@@ -1,5 +1,4 @@
 CC = g++
-# Update this path to where your boost_1_87_0 folder is located
 
 BOOST_PATH = D:\algo\Socket Distributed Programming\boost_1_87_0# Add OpenSSL include path
 OPENSSL_LIB_PATH = D:\Distributed BlockChain\vcpkg\installed\x64-windows\lib
@@ -21,13 +20,9 @@ TARGET_NODE = blockchain_node
 NODE_SRCS = NodeApp.cpp NetworkNode.cpp Blockchain.cpp Block.cpp Transaction.cpp wallet.cpp sha.cpp crypto_utils.cpp BlockchainDB.cpp
 
 # Object files
-# OBJS = $(SRCS:.cpp=.o)
 NODE_OBJS = $(NODE_SRCS:.cpp=.o)
 
 all: $(TARGET_NODE)
-
-# $(TARGET): $(OBJS)
-#	$(CC) -o $(TARGET) $(OBJS) $(LDFLAGS)
 
 $(TARGET_NODE): $(NODE_OBJS)
 	$(CC) -o $(TARGET_NODE) $(NODE_OBJS) $(LDFLAGS) $(LEVELDB_STATIC)
@@ -38,9 +33,6 @@ $(TARGET_NODE): $(NODE_OBJS)
 clean:
 	del $(NODE_OBJS) $(TARGET_NODE).exe
 
-# run: $(TARGET)
-#	./$(TARGET)
-
 run-node: $(TARGET_NODE)
 	./$(TARGET_NODE)
 
@@ -50,4 +42,4 @@ run-full-node: $(TARGET_NODE)
 run-wallet-node: $(TARGET_NODE)
 	./$(TARGET_NODE) --type wallet --port 8001
 
-.PHONY: all clean run-node run-full-node run-wallet-node 
+.PHONY: all clean run-node run-full-node run-wallet-node

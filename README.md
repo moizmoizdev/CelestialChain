@@ -14,6 +14,7 @@ A complete implementation of a blockchain in C++ that demonstrates the core conc
 - Configure mining difficulty
 - Networking with peer-to-peer connections
 - Persistent storage using LevelDB
+- Persistent storage using LevelDB
 - Support for two types of nodes:
   - Full Nodes: Complete blockchain functionality with mining capabilities
   - Wallet Nodes: Transaction creation and wallet management without mining
@@ -21,8 +22,11 @@ A complete implementation of a blockchain in C++ that demonstrates the core conc
 ## Requirements
 
 - C++17 compiler (for structured bindings)
+- C++17 compiler (for structured bindings)
 - Boost libraries (system, thread)
 - pthread
+- LevelDB
+- OpenSSL
 - LevelDB
 - OpenSSL
 
@@ -30,10 +34,13 @@ A complete implementation of a blockchain in C++ that demonstrates the core conc
 
 ```bash
 # Install dependencies
+# Install dependencies
 # On Ubuntu:
+sudo apt-get install libboost-all-dev libleveldb-dev libssl-dev
 sudo apt-get install libboost-all-dev libleveldb-dev libssl-dev
 
 # On Windows with MSYS2/MinGW:
+pacman -S mingw-w64-x86_64-boost mingw-w64-x64-leveldb mingw-w64-x64-openssl
 pacman -S mingw-w64-x86_64-boost mingw-w64-x64-leveldb mingw-w64-x64-openssl
 
 # Compile the project
@@ -74,6 +81,7 @@ Available options:
 - `Transaction.h/cpp` - Implements a transaction model with sender, receiver, and amount
 - `wallet.h/cpp` - Implements a wallet system for managing keys and balances
 - `sha.h/cpp` - Provides hash functionality for the blockchain
+- `BlockchainDB.h/cpp` - Implements persistent storage using LevelDB
 - `BlockchainDB.h/cpp` - Implements persistent storage using LevelDB
 
 ## Networking Architecture

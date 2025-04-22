@@ -281,6 +281,14 @@ int main(int argc, char* argv[]) {
         }
     } while (choice != 0);
 
-    networkManager.stop();
+        // Clean shutdown
+        networkManager.stop();
+    }
+    catch (const std::exception& e) {
+        std::cerr << "ERROR: Failed to initialize network: " << e.what() << std::endl;
+        std::cerr << "Try running with a different port using --port parameter." << std::endl;
+        return 1;
+    }
+
     return 0;
 }
