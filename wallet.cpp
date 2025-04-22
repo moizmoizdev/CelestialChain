@@ -407,32 +407,76 @@ bool Wallet::loadFromHostPort() {
     }
     file.close();
     
-    // Extract the address from the filename to load the wallet
+    // Instead of extracting the address and calling loadFromIniFile,
+    // directly load the wallet data from the node-specific file
     std::string line;
+    std::string section;
+    std::string privKey;
     std::ifstream readFile(filePath);
-    std::string walletAddress = "";
     
     while (std::getline(readFile, line)) {
-        if (line.find("address=") == 0) {
-            walletAddress = line.substr(8); // Extract address value
-            break;
+        // Skip empty lines and comments
+        if (line.empty() || line[0] == ';') continue;
+
+        // Check for section header
+        if (line[0] == '[') {
+            section = line.substr(1, line.find(']') - 1);
+            continue;
+        }
+
+        // Parse key-value pairs
+        size_t pos = line.find('=');
+        if (pos != std::string::npos) {
+            std::string key = line.substr(0, pos);
+            std::string value = line.substr(pos + 1);
+
+            if (section == "wallet") {
+                if (key == "private_key") {
+                    privKey = value;
+                } else if (key == "public_key") {
+                    publicKey = value;
+                } else if (key == "address") {
+                    address = value;
+                } else if (key == "balance") {
+                    balance = std::stod(value);
+                }
+            }
         }
     }
     readFile.close();
     
-    if (walletAddress.empty()) {
-        std::cerr << "Could not determine wallet address from file: " << filePath << std::endl;
+    if (address.empty() || publicKey.empty() || privKey.empty()) {
+        std::cerr << "Failed to read complete wallet data from: " << filePath << std::endl;
         return false;
     }
     
-    // Now load the wallet using the address
-    bool success = loadFromIniFile(walletAddress);
-    if (success) {
-        std::cout << "Successfully loaded wallet for node " << nodeHost << ":" << nodePort << std::endl;
-        std::cout << "Wallet address: " << address << std::endl;
+    // Load private key from PEM format using modern OpenSSL API
+    BIO* bio = BIO_new_mem_buf(privKey.c_str(), privKey.length());
+    if (!bio) {
+        std::cerr << "Failed to create BIO" << std::endl;
+        return false;
+    }
+
+    EVP_PKEY* pkey = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+
+    if (!pkey) {
+        std::cerr << "Failed to read private key" << std::endl;
+        return false;
+    }
+
+    key_pair = EVP_PKEY_get1_EC_KEY(pkey);
+    EVP_PKEY_free(pkey);
+
+    if (!key_pair) {
+        std::cerr << "Failed to get EC key from EVP_PKEY" << std::endl;
+        return false;
     }
     
-    return success;
+    std::cout << "Successfully loaded wallet for node " << nodeHost << ":" << nodePort << std::endl;
+    std::cout << "Wallet address: " << address << std::endl;
+    
+    return true;
 }
 
 // Set node information and try to load wallet based on host:port
