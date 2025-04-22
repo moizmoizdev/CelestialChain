@@ -153,6 +153,7 @@ public:
     std::vector<Peer> getConnectedPeers() const;
     
 private:
+    int failedBlockCount=0;
     // Start accepting incoming connections
     void startAccept();
     

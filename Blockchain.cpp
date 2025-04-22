@@ -34,7 +34,9 @@ void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
 
 // Push a block received from the network (doesnt remine)
 void Blockchain::addExistingBlock(const Block& block) {
-    //  block.previousHash == getLatestBlock().hash
+    if(block.previousHash != getLatestBlock().hash){
+        throw std::runtime_error("Blockchain integrity compromised. Previous hash mismatch.");
+    }
     chain.push_back(block);
     
     // Persist the block to database
@@ -63,7 +65,10 @@ void Blockchain::addTransaction(const Transaction& transaction) {
               << transaction.receiver << ": " << transaction.amount << std::endl;
 }
 
-Block& Blockchain::mineBlock(Wallet& wallet, NodeType nodeType) {
+Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType) {
+    // Store the wallets for future use
+    wallets = walletList;
+    
     // Check if this is a wallet node trying to mine
     if (nodeType == NodeType::WALLET_NODE) {
         throw std::runtime_error("ERROR: Wallet nodes cannot mine blocks.");

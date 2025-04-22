@@ -10,6 +10,9 @@
 #include <openssl/sha.h>
 #include <openssl/bn.h>
 
+// String utility function
+std::vector<std::string> splitString(const std::string& str, char delim);
+
 // Initialize OpenSSL
 void initOpenSSL();
 

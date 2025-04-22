@@ -9,6 +9,19 @@
 #include <vector>
 #include <iostream>
 
+// Add the splitString function
+std::vector<std::string> splitString(const std::string& str, char delim) {
+    std::vector<std::string> tokens;
+    std::stringstream ss(str);
+    std::string token;
+    
+    while (std::getline(ss, token, delim)) {
+        tokens.push_back(token);
+    }
+    
+    return tokens;
+}
+
 void initOpenSSL() {
     OpenSSL_add_all_algorithms();
 }

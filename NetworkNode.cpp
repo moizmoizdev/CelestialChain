@@ -4,6 +4,7 @@
 #include <sstream>
 #include <random>
 #include <stdexcept>
+#include <cmath>  // For std::pow function
 
 // NetworkMessage implementation
 std::string NetworkMessage::serialize() const {
@@ -572,7 +573,22 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             block.hash      = hash;
         
             // 4) Add to our chain
-            blockchain.addExistingBlock(block);  // or a new addExistingBlock method
+            try{
+                blockchain.addExistingBlock(block);  // or a new addExistingBlock method
+            }
+            catch(const std::exception& e){
+                std::cerr << "Error adding block to chain: " << e.what() << std::endl;
+                failedBlockCount++;
+                if(failedBlockCount >= 5){
+                    try{
+                        requestBlockchain();
+                        failedBlockCount = 0;
+                    }
+                    catch(const std::exception& e){
+                        std::cerr << "Error requesting blockchain: " << e.what() << std::endl;
+                    }
+                }
+            }
         
             // 5) Relay to other peers, except the sender
             {
@@ -599,9 +615,7 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             // Serialize the blockchain
             std::stringstream ss;
             const std::vector<Block>& chain = blockchain.getChain();
-            
             ss << chain.size();
-            
             for (const auto& block : chain) {
                 ss << "|" << block.blockNumber << "|"
                    << block.timestamp << "|"
@@ -641,68 +655,195 @@ void NetworkManager::handleMessage(Connection::pointer connection, const Network
             int blockCount = std::stoi(parts[0]);
             std::cout << "Received blockchain with " << blockCount << " blocks from " << message.sender << std::endl;
             
-            // This is where we would actually parse and add the blockchain data
-            // For a complete implementation, we would:
-            // 1. Parse each block and its transactions
-            // 2. Validate the chain
-            // 3. Replace our chain if the received one is valid and longer
+            // Implement the longest chain algorithm by:
+            // 1. Parse the received blockchain
+            // 2. Validate the received chain's integrity
+            // 3. Compare with our current chain
+            // 4. Replace our chain if the received one is valid and longer
             
-            // Sample implementation for future enhancement:
-            /*
             std::vector<Block> receivedChain;
             int currentPos = 1;
+            bool chainValid = true;
             
-            for (int i = 0; i < blockCount; i++) {
-                if (currentPos + 6 >= parts.size()) {
-                    std::cerr << "Invalid blockchain data: missing block data" << std::endl;
-                    break;
-                }
-                
-                int blockNumber = std::stoi(parts[currentPos++]);
-                time_t timestamp = std::stoul(parts[currentPos++]);
-                std::string previousHash = parts[currentPos++];
-                std::string hash = parts[currentPos++];
-                int nonce = std::stoi(parts[currentPos++]);
-                int difficulty = std::stoi(parts[currentPos++]);
-                int txCount = std::stoi(parts[currentPos++]);
-                
-                std::vector<Transaction> transactions;
-                
-                for (int j = 0; j < txCount; j++) {
+            try {
+                for (int i = 0; i < blockCount; i++) {
                     if (currentPos + 6 >= parts.size()) {
-                        std::cerr << "Invalid blockchain data: missing transaction data" << std::endl;
+                        std::cerr << "Invalid blockchain data: missing block data" << std::endl;
+                        chainValid = false;
                         break;
                     }
                     
-                    std::string sender = parts[currentPos++];
-                    std::string senderPublicKey = parts[currentPos++];
-                    std::string receiver = parts[currentPos++];
-                    double amount = std::stod(parts[currentPos++]);
-                    unsigned long txTimestamp = std::stoul(parts[currentPos++]);
-                    std::string txHash = parts[currentPos++];
-                    std::string signature = parts[currentPos++];
+                    int blockNumber = std::stoi(parts[currentPos++]);
+                    time_t timestamp = std::stoul(parts[currentPos++]);
+                    std::string previousHash = parts[currentPos++];
+                    std::string hash = parts[currentPos++];
+                    int nonce = std::stoi(parts[currentPos++]);
+                    int difficulty = std::stoi(parts[currentPos++]);
+                    int txCount = std::stoi(parts[currentPos++]);
                     
-                    Transaction tx(sender, senderPublicKey, receiver, amount, txHash, signature, txTimestamp);
-                    transactions.push_back(tx);
+                    // Validate block number
+                    if (i != blockNumber) {
+                        std::cerr << "Block number mismatch: expected " << i << ", got " << blockNumber << std::endl;
+                        chainValid = false;
+                        break;
+                    }
+                    
+                    std::vector<Transaction> transactions;
+                    
+                    for (int j = 0; j < txCount; j++) {
+                        if (currentPos + 6 >= parts.size()) {
+                            std::cerr << "Invalid blockchain data: missing transaction data" << std::endl;
+                            chainValid = false;
+                            break;
+                        }
+                        
+                        std::string sender = parts[currentPos++];
+                        std::string senderPublicKey = parts[currentPos++];
+                        std::string receiver = parts[currentPos++];
+                        double amount = std::stod(parts[currentPos++]);
+                        unsigned long txTimestamp = std::stoul(parts[currentPos++]);
+                        std::string txHash = parts[currentPos++];
+                        std::string signature = parts[currentPos++];
+                        
+                        Transaction tx(sender, senderPublicKey, receiver, amount, txHash, signature, txTimestamp);
+                        
+                        // Validate transaction
+                        if (!tx.isValid()) {
+                            std::cerr << "Invalid transaction in block " << blockNumber << std::endl;
+                            chainValid = false;
+                            break;
+                        }
+                        
+                        transactions.push_back(tx);
+                    }
+                    
+                    if (!chainValid) break;
+                    
+                    Block block(blockNumber, transactions, previousHash, difficulty);
+                    block.timestamp = timestamp;
+                    block.nonce = nonce;
+                    block.hash = hash;
+                    
+                    // Validate block hash
+                    std::string calculatedHash = block.calculateHash();
+                    if (block.blockNumber==0){
+                        if (block.hash != "0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80") {
+                            std::cerr << "Genesis block hash mismatch" << std::endl;
+                            chainValid = false;
+                            break;
+                        }
+                    }
+                    if (hash != calculatedHash && block.blockNumber!=0) {
+                        std::cerr << "Block hash mismatch in block " << blockNumber << std::endl;
+                        std::cerr << "Expected: " << calculatedHash << std::endl;
+                        std::cerr << "Got: " << hash << std::endl;
+                        chainValid = false;
+                        break;
+                    }
+                    
+                    // Validate chain links
+                    if (i > 0) {
+                        if (block.previousHash != receivedChain.back().hash) {
+                            std::cerr << "Chain broken at block " << blockNumber << std::endl;
+                            std::cerr << "Expected previous hash: " << receivedChain.back().hash << std::endl;
+                            std::cerr << "Got: " << block.previousHash << std::endl;
+                            chainValid = false;
+                            break;
+                        }
+                    }
+                    
+                    receivedChain.push_back(block);
                 }
                 
-                Block block(blockNumber, transactions, previousHash, difficulty);
-                block.timestamp = timestamp;
-                block.nonce = nonce;
-                block.hash = hash;
-                
-                receivedChain.push_back(block);
+                // Implement the longest chain algorithm
+                if (chainValid && !receivedChain.empty()) {
+                    // Check if the genesis block matches our genesis block
+                    const auto& ourChain = blockchain.getChain();
+                    
+                    if (ourChain.empty()) {
+                        std::cerr << "Our chain is empty. Cannot validate against genesis block." << std::endl;
+                        break;
+                    }
+                    
+                    if (receivedChain[0].hash != ourChain[0].hash) {
+                        std::cerr << "Genesis block mismatch. Different blockchain network." << std::endl;
+                        break;
+                    }
+                    
+                    // Calculate total difficulty (work) for both chains
+                    // In PoW blockchains, the chain with the most accumulated work is considered valid
+                    // Total work is approximated as sum of 2^difficulty for each block
+                    double ourTotalWork = 0;
+                    double receivedTotalWork = 0;
+                    
+                    for (const auto& block : ourChain) {
+                        // 2^difficulty approximates the amount of work needed
+                        ourTotalWork += std::pow(2.0, block.difficulty);
+                    }
+                    
+                    for (const auto& block : receivedChain) {
+                        receivedTotalWork += std::pow(2.0, block.difficulty);
+                    }
+                    
+                    std::cout << "Our chain work: " << ourTotalWork << ", length: " << ourChain.size() << std::endl;
+                    std::cout << "Received chain work: " << receivedTotalWork << ", length: " << receivedChain.size() << std::endl;
+                    
+                    // Compare chain work - implement the correct chain selection rule
+                    if (receivedTotalWork > ourTotalWork) {
+                        std::cout << "Received chain has more proof of work (" << receivedTotalWork 
+                                  << ") than our chain (" << ourTotalWork << ")" << std::endl;
+                        
+                        // Clear our chain except genesis block
+                        for (size_t i = 1; i < ourChain.size(); i++) {
+                            // For any transactions in replaced blocks, add them back to mempool
+                            // if they're not already in the new chain
+                            for (const auto& tx : ourChain[i].transactions) {
+                                bool txInNewChain = false;
+                                for (size_t j = 1; j < receivedChain.size(); j++) {
+                                    for (const auto& newTx : receivedChain[j].transactions) {
+                                        if (tx.hash == newTx.hash) {
+                                            txInNewChain = true;
+                                            break;
+                                        }
+                                    }
+                                    if (txInNewChain) break;
+                                }
+                                
+                                if (!txInNewChain) {
+                                    std::cout << "Re-adding transaction " << tx.hash << " to mempool" << std::endl;
+                                    blockchain.addTransaction(tx);
+                                }
+                            }
+                        }
+                        
+                        // Create a new blockchain with just the genesis block
+                        Blockchain newChain(receivedChain[0].difficulty);
+                        
+                        // Add each block from the received chain (skip genesis which is already added)
+                        for (size_t i = 1; i < receivedChain.size(); i++) {
+                            try {
+                                std::cout << "Adding block #" << i << " to our chain" << std::endl;
+                                blockchain.addExistingBlock(receivedChain[i]);
+                            } catch (const std::exception& e) {
+                                std::cerr << "Error adding block #" << i << ": " << e.what() << std::endl;
+                                chainValid = false;
+                                break;
+                            }
+                        }
+                        
+                        if (chainValid) {
+                            std::cout << "Chain replaced successfully with chain having more proof of work" << std::endl;
+                        } else {
+                            std::cerr << "Failed to replace chain - invalid blocks detected" << std::endl;
+                        }
+                    } else {
+                        std::cout << "Our chain has more or equal proof of work. Keeping our chain." << std::endl;
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Error processing received blockchain: " << e.what() << std::endl;
             }
             
-            // Validate and potentially replace our chain
-            if (!receivedChain.empty() && receivedChain.size() > blockchain.getChain().size()) {
-                // Additional validation would be done here
-                // For now, just replace the chain
-                for (const auto& block : receivedChain) {
-                    blockchain.addExistingBlock(block);
-                }
-            }
-            */
             break;
         }
         

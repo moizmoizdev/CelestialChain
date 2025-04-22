@@ -6,7 +6,12 @@
 #include <leveldb/options.h>
 #include <leveldb/write_batch.h>
 #include <boost/lexical_cast.hpp>
+#include "crypto_utils.h"
 #include <algorithm>
+
+// Forward declaration if it's not found in the header
+// Remove this if splitString is already declared in crypto_utils.h
+// std::vector<std::string> splitString(const std::string& str, char delim);
 
 BlockchainDB::BlockchainDB(const std::string& dbPath) : db(nullptr) {
     leveldb::Options options;
@@ -31,6 +36,10 @@ BlockchainDB::~BlockchainDB() {
 
 bool BlockchainDB::isOpen() const {
     return db != nullptr;
+}
+
+std::string BlockchainDB::getLastError() const {
+    return lastError;
 }
 
 bool BlockchainDB::put(const std::string& key, const std::string& value) {
@@ -156,8 +165,7 @@ std::vector<std::string> BlockchainDB::getAllKeys(const std::string& prefix) con
             break;
         }
     }
-
-    delete it;
+    
     return keys;
 }
 

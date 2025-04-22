@@ -163,12 +163,20 @@ int main(int argc, char* argv[]) {
     cin.get();
 
     vector<Wallet*> wallets = { &nodeWallet };
-
+    if (nodeType == NodeType::FULL_NODE)
+        {
+            cout<<"Synchorizing requesting blockchain from peers..."<<endl;
+            networkManager.requestBlockchain();
+        }
     int choice;
     do {
         clearScreen();
         if (nodeType == NodeType::FULL_NODE)
+        {
+            cout<<"Synchorizing requesting blockchain from peers..."<<endl;
+            networkManager.requestBlockchain();
             printFullNodeMenu();
+        }
         else
             printWalletNodeMenu();
 
@@ -281,14 +289,10 @@ int main(int argc, char* argv[]) {
         }
     } while (choice != 0);
 
-        // Clean shutdown
-        networkManager.stop();
-    }
-    catch (const std::exception& e) {
-        std::cerr << "ERROR: Failed to initialize network: " << e.what() << std::endl;
-        std::cerr << "Try running with a different port using --port parameter." << std::endl;
-        return 1;
-    }
+    // Clean shutdown
+    networkManager.stop();
 
     return 0;
 }
+
+

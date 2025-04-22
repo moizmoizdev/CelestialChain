@@ -14,6 +14,7 @@ class Blockchain {
 private:
     std::vector<Block> chain;
     std::vector<Transaction> mempool;
+    std::vector<Wallet*> wallets;  // To store wallet pointers for updating balances
     int difficulty;
     BlockchainDB* db;  // Database connection
 
@@ -26,7 +27,7 @@ public:
     void addBlock(const std::vector<Transaction>& transactions);
     void addExistingBlock(const Block& block);
     void addTransaction(const Transaction& transaction);
-    Block& mineBlock(Wallet& wallet, NodeType nodeType = NodeType::FULL_NODE);
+    Block& mineBlock(std::vector<Wallet*>& wallets, NodeType nodeType = NodeType::FULL_NODE);
     
     const Block& getLatestBlock() const;
     size_t getChainSize() const;
