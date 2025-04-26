@@ -93,6 +93,14 @@ std::string Wallet::getAddress() const {
 }
 
 double Wallet::getBalance() const {
+    // If we have a database connection, synchronize balance first
+    if (db) {
+        double dbBalance = 0.0;
+        // Note: const_cast needed because this method is const but we need to update balance
+        if (db->getBalance(address, dbBalance)) {
+            const_cast<Wallet*>(this)->synchronizeBalance(dbBalance);
+        }
+    }
     return balance;
 }
 

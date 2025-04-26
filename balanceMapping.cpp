@@ -36,16 +36,27 @@ bool BalanceMapping::getBalance(const std::string& address, double& balance) con
 }
 
 bool BalanceMapping::processTransaction(const std::string& sender, const std::string& receiver, double amount) {
-    if (!db) return false;
+    if (!db) {
+        std::cerr << "ERROR: Database not available for processing transaction" << std::endl;
+        return false;
+    }
     
-    // Handle Genesis transactions or coin generation transactions
+    // Special case: Skip the Genesis block's genesis transaction
+    if (sender == "Genesis" && receiver == "Genesis") {
+        std::cout << "Skipping Genesis-to-Genesis transaction" << std::endl;
+        return true;  // Consider it processed successfully, but we don't change any balances
+    }
+    
+    // Handle mining rewards (Genesis sender)
     if (sender == "Genesis") {
+        std::cout << "Processing mining reward of " << amount << " to " << receiver << std::endl;
         return processCoinGeneration(receiver, amount);
     }
     
     // Get sender balance
     double senderBalance = 0.0;
     if (!getBalance(sender, senderBalance)) {
+        std::cerr << "ERROR: Failed to retrieve sender balance" << std::endl;
         return false;
     }
     
@@ -59,8 +70,13 @@ bool BalanceMapping::processTransaction(const std::string& sender, const std::st
     // Get receiver balance
     double receiverBalance = 0.0;
     if (!getBalance(receiver, receiverBalance)) {
+        std::cerr << "ERROR: Failed to retrieve receiver balance" << std::endl;
         return false;
     }
+    
+    // Calculate new balances
+    double newSenderBalance = senderBalance - amount;
+    double newReceiverBalance = receiverBalance + amount;
     
     // Create a batch update to ensure atomicity
     std::vector<std::pair<std::string, std::string>> operations;
@@ -68,29 +84,56 @@ bool BalanceMapping::processTransaction(const std::string& sender, const std::st
     // Update sender balance
     operations.push_back(std::make_pair(
         "balance:" + sender, 
-        std::to_string(senderBalance - amount)
+        std::to_string(newSenderBalance)
     ));
     
     // Update receiver balance
     operations.push_back(std::make_pair(
         "balance:" + receiver, 
-        std::to_string(receiverBalance + amount)
+        std::to_string(newReceiverBalance)
     ));
     
-    return db->writeBatch(operations);
+    // Execute the batch update
+    bool success = db->writeBatch(operations);
+    
+    if (success) {
+        std::cout << "Transaction processed successfully:" << std::endl;
+        std::cout << "- " << sender << ": " << senderBalance << " -> " << newSenderBalance << std::endl;
+        std::cout << "- " << receiver << ": " << receiverBalance << " -> " << newReceiverBalance << std::endl;
+    } else {
+        std::cerr << "ERROR: Failed to write transaction to database" << std::endl;
+    }
+    
+    return success;
 }
 
 bool BalanceMapping::processCoinGeneration(const std::string& receiver, double amount) {
-    if (!db) return false;
+    if (!db) {
+        std::cerr << "ERROR: Database not available for processing coin generation" << std::endl;
+        return false;
+    }
     
     // For coin generation, we only need to credit the receiver
     double receiverBalance = 0.0;
     if (!getBalance(receiver, receiverBalance)) {
+        std::cerr << "ERROR: Failed to retrieve receiver balance for coin generation" << std::endl;
         return false;
     }
     
-    // Update receiver balance (no batch needed since we're only updating one entry)
-    return updateBalance(receiver, receiverBalance + amount);
+    // Calculate new balance
+    double newBalance = receiverBalance + amount;
+    
+    // Update receiver balance
+    bool success = updateBalance(receiver, newBalance);
+    
+    if (success) {
+        std::cout << "Mining reward processed:" << std::endl;
+        std::cout << "- " << receiver << ": " << receiverBalance << " -> " << newBalance << std::endl;
+    } else {
+        std::cerr << "ERROR: Failed to update balance for mining reward" << std::endl;
+    }
+    
+    return success;
 }
 
 std::map<std::string, double> BalanceMapping::getAllBalances() const {

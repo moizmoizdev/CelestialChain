@@ -314,16 +314,47 @@ void Blockchain::setBalanceMapping(BalanceMapping* mapping) {
 
 // Update balances when processing a block
 void Blockchain::updateBalancesForBlock(const Block& block) {
-    if (!balanceMap) return;
+    if (!balanceMap) {
+        std::cerr << "WARNING: Cannot update balances - balance mapping not available" << std::endl;
+        return;
+    }
+    
+    std::cout << "Updating balances for block #" << block.blockNumber << std::endl;
+    int processedTransactions = 0;
+    int failedTransactions = 0;
     
     for (const auto& tx : block.transactions) {
-        // Skip genesis transaction
-        if (tx.sender == "Genesis" && tx.receiver == "Genesis") continue;
+        // Skip genesis transaction in genesis block
+        if (block.blockNumber == 0 && tx.sender == "Genesis" && tx.receiver == "Genesis") {
+            std::cout << "Skipping genesis block genesis transaction" << std::endl;
+            continue;
+        }
+        
+        std::cout << "Processing transaction: " << tx.sender << " -> " << tx.receiver 
+                 << " (" << tx.amount << ")" << std::endl;
         
         // Process the transaction to update balances
-        if (!balanceMap->processTransaction(tx.sender, tx.receiver, tx.amount)) {
+        if (balanceMap->processTransaction(tx.sender, tx.receiver, tx.amount)) {
+            processedTransactions++;
+            
+            // Debug: Show the updated balances
+            double senderBalance = 0.0, receiverBalance = 0.0;
+            balanceMap->getBalance(tx.sender, senderBalance);
+            balanceMap->getBalance(tx.receiver, receiverBalance);
+            
+            std::cout << "Updated balances:" << std::endl;
+            std::cout << "- " << tx.sender << ": " << senderBalance << std::endl;
+            std::cout << "- " << tx.receiver << ": " << receiverBalance << std::endl;
+        } else {
             std::cerr << "Failed to update balances for transaction " << tx.hash << std::endl;
+            failedTransactions++;
         }
+    }
+    
+    std::cout << "Balance update complete for block #" << block.blockNumber << ":" << std::endl;
+    std::cout << "- Processed: " << processedTransactions << " transactions" << std::endl;
+    if (failedTransactions > 0) {
+        std::cerr << "- Failed: " << failedTransactions << " transactions" << std::endl;
     }
 }
 
@@ -421,7 +452,13 @@ void Blockchain::loadFromDatabase() {
 
 // Helper method to rebuild balances from transactions
 void Blockchain::rebuildBalancesFromTransactions() {
-    if (!balanceMap || !db || !db->isOpen()) {
+    if (!balanceMap) {
+        std::cerr << "ERROR: Cannot rebuild balances - no balance mapping available" << std::endl;
+        return;
+    }
+    
+    if (!db || !db->isOpen()) {
+        std::cerr << "ERROR: Cannot rebuild balances - no database connection" << std::endl;
         return;
     }
     
@@ -429,19 +466,53 @@ void Blockchain::rebuildBalancesFromTransactions() {
     
     // Get all current balances and reset them to zero
     auto allBalances = balanceMap->getAllBalances();
+    std::cout << "Found " << allBalances.size() << " addresses with balances" << std::endl;
+    
     for (const auto& pair : allBalances) {
         std::string address = pair.first;
         balanceMap->updateBalance(address, 0.0);
     }
     
+    int processedBlocks = 0;
+    int processedTransactions = 0;
+    
     // Process all transactions in order
     for (const auto& block : chain) {
         for (const auto& tx : block.transactions) {
-            balanceMap->processTransaction(tx.sender, tx.receiver, tx.amount);
+            // Skip the genesis block's genesis transaction
+            if (block.blockNumber == 0 && tx.sender == "Genesis" && tx.receiver == "Genesis") {
+                continue;
+            }
+            
+            if (balanceMap->processTransaction(tx.sender, tx.receiver, tx.amount)) {
+                processedTransactions++;
+            } else {
+                std::cerr << "WARNING: Failed to process transaction: " 
+                         << tx.sender << " -> " << tx.receiver 
+                         << " (" << tx.amount << ")" << std::endl;
+            }
         }
+        processedBlocks++;
     }
     
-    std::cout << "Balance rebuilding complete." << std::endl;
+    // Display the results
+    std::cout << "Balance rebuilding complete:" << std::endl;
+    std::cout << "- Processed " << processedBlocks << " blocks" << std::endl;
+    std::cout << "- Processed " << processedTransactions << " transactions" << std::endl;
+    
+    // Show updated balances
+    auto updatedBalances = balanceMap->getAllBalances();
+    std::cout << "- Updated " << updatedBalances.size() << " address balances" << std::endl;
+    
+    // Log details of non-zero balances
+    int nonZeroCount = 0;
+    for (const auto& [address, balance] : updatedBalances) {
+        if (balance > 0.0) {
+            nonZeroCount++;
+            std::cout << "  > " << address << ": " << balance << std::endl;
+        }
+    }
+    std::cout << "- " << nonZeroCount << " addresses with non-zero balances" << std::endl;
 }
 
 // Calculate the total supply of coins in the blockchain

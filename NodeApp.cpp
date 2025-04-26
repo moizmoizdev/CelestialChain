@@ -53,7 +53,7 @@ void printFullNodeMenu() {
     cout << "9. View blockchain statistics" << endl;
     cout << "10. Visit Explorer" << endl;
     cout << "0. Exit" << endl;
-    cout << "====================================" << endl;
+    cout << "--------------------------------------------------------=" << endl;
     cout << "Enter your choice: ";
 }
 
@@ -83,7 +83,6 @@ int main(int argc, char* argv[]) {
     int difficulty = 4;
     bool cleanStart = false;
 
-    // Parse command line arguments
     for (int i = 1; i < argc; ++i) {
         string arg = argv[i];
         if (arg == "--host" && i + 1 < argc) {
@@ -123,7 +122,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    // Initializing Database
     cout << "Opening database at " << dbPath << "..." << endl;
     BlockchainDB db(dbPath);
     BlockchainDB* dbPtr = nullptr;
@@ -145,19 +143,16 @@ int main(int argc, char* argv[]) {
         cout << "Database opened successfully." << endl;
         dbPtr = &db;  // Set the pointer to the valid database
         
-        // Verify database integrity
         cout << "Verifying database integrity..." << endl;
         bool dbIntegrity = db.verifyDatabaseIntegrity(true);
         if (!dbIntegrity) {
             cout << "Database integrity issues were detected and attempt was made to repair." << endl;
         }
         
-        // Initialize the balance mapping only if we have a valid database
         cout << "Initializing balance mapping..." << endl;
         BalanceMapping balanceMap(&db);
         balanceMapPtr = &balanceMap;
         
-        // Initialize blockchain explorer
         cout << "Initializing blockchain explorer..." << endl;
         Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
         
@@ -171,6 +166,10 @@ int main(int argc, char* argv[]) {
             try {
                 blockchain.loadFromDatabase();
                 cout << "Blockchain loaded with " << blockchain.getChainSize() << " blocks." << endl;
+                
+                // Explicitly rebuild balances from transactions
+                cout << "Explicitly rebuilding balances from transaction history..." << endl;
+                blockchain.rebuildBalancesFromTransactions();
             } catch (const exception& e) {
                 cout << "Error loading blockchain from database: " << e.what() << endl;
                 cout << "Starting with fresh blockchain." << endl;
@@ -184,6 +183,34 @@ int main(int argc, char* argv[]) {
     // Initialize wallet with host:port to load existing wallet or create a new one
     Wallet nodeWallet(host, port, dbPtr);
     cout << "Wallet address: " << nodeWallet.getAddress() << endl;
+    
+    // Synchronize wallet balance from database if available
+    if (balanceMapPtr) {
+        double dbBalance = 0.0;
+        if (balanceMapPtr->getBalance(nodeWallet.getAddress(), dbBalance)) {
+            cout << "Synchronizing wallet balance: " << dbBalance << endl;
+            nodeWallet.synchronizeBalance(dbBalance);
+        } else {
+            cout << "No existing balance found for wallet in database" << endl;
+        }
+        
+        // Debug: Check the specific addresses mentioned by the user
+        const string addressToCheck = "0x42957ede02fe8537b2833b5b7631c9b019e46295";
+        double specificBalance = 0.0;
+        if (balanceMapPtr->getBalance(addressToCheck, specificBalance)) {
+            cout << "DEBUG: Balance for " << addressToCheck << ": " << specificBalance << endl;
+        } else {
+            cout << "DEBUG: Failed to retrieve balance for " << addressToCheck << endl;
+        }
+        
+        const string senderAddress = "0xa2843a4556c20f6e16a4ce3d89c4a9bf4248c3d1";
+        double senderBalance = 0.0;
+        if (balanceMapPtr->getBalance(senderAddress, senderBalance)) {
+            cout << "DEBUG: Balance for " << senderAddress << ": " << senderBalance << endl;
+        } else {
+            cout << "DEBUG: Failed to retrieve balance for " << senderAddress << endl;
+        }
+    }
     
     // Initializing network manager with the blockchain and wallet
     NetworkManager networkManager(blockchain, nodeWallet, host, port, nodeType);
@@ -243,19 +270,42 @@ int main(int argc, char* argv[]) {
         switch (choice) {
             case 1:
                 clearScreen();
-                cout << blockchain.toString() << endl;
+                try {
+                    cout << blockchain.toString() << endl;
+                } catch (const exception& e) {
+                    cout << "Error displaying blockchain: " << e.what() << endl;
+                }
                 break;
             case 2:
                 clearScreen();
-                blockchain.printMempool();
+                try {
+                    blockchain.printMempool();
+                } catch (const exception& e) {
+                    cout << "Error displaying mempool: " << e.what() << endl;
+                }
                 break;
             case 3:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    blockchain.mineBlock(wallets, nodeType);
-                    networkManager.broadcastBlock(blockchain.getLatestBlock());
+                    try {
+                        blockchain.mineBlock(wallets, nodeType);
+                        networkManager.broadcastBlock(blockchain.getLatestBlock());
+                        cout << "Block mined and broadcast successfully!" << endl;
+                    } catch (const exception& e) {
+                        cout << "Mining failed: " << e.what() << endl;
+                        cout << "\nTo mine more blocks, you need to create some transactions first." << endl;
+                        cout << "Choose option 4 to create a transaction between wallets." << endl;
+                    }
                 } else {
                     clearScreen();
+                    // Resynchronize wallet balance with database before transaction
+                    if (balanceMapPtr) {
+                        double dbBalance = 0.0;
+                        if (balanceMapPtr->getBalance(nodeWallet.getAddress(), dbBalance)) {
+                            cout << "Synchronizing wallet balance from database: " << dbBalance << endl;
+                            nodeWallet.synchronizeBalance(dbBalance);
+                        }
+                    }
                     cout << "Enter receiver: "; cin >> receiver;
                     cout << "Enter amount: ";   cin >> amount;
                     Transaction tx("", "", 0);
@@ -270,14 +320,19 @@ int main(int argc, char* argv[]) {
                     clearScreen();
                     cout << "Enter receiver: "; cin >> receiver;
                     cout << "Enter amount: ";   cin >> amount;
-                    Transaction tx("", "", 0);
-                    cout << "Transaction is created" << endl;
-                    nodeWallet.sendMoney(amount, receiver, tx);
-                    cout << "Money is sent" << endl;
-                    blockchain.addTransaction(tx);
-                    cout << "Transaction is added" << endl;
-                    networkManager.broadcastTransaction(tx);
-                    cout << "Transaction is broadcasted" << endl;
+                    
+                    try {
+                        Transaction tx("", "", 0);
+                        cout << "Transaction is created" << endl;
+                        nodeWallet.sendMoney(amount, receiver, tx);
+                        cout << "Money is sent" << endl;
+                        blockchain.addTransaction(tx);
+                        cout << "Transaction is added" << endl;
+                        networkManager.broadcastTransaction(tx);
+                        cout << "Transaction is broadcasted" << endl;
+                    } catch (const exception& e) {
+                        cout << "Transaction failed: " << e.what() << endl;
+                    }
                 } else {
                     clearScreen();
                     cout << "Address: " << nodeWallet.getAddress() << endl;
@@ -321,18 +376,16 @@ int main(int argc, char* argv[]) {
             case 8:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    // Display blockchain statistics
                     if (dbPtr) {
                         Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
                         
-                        cout << "===== Blockchain Statistics =====" << endl;
+                        cout << "-------- Blockchain Statistics --------" << endl;
                         cout << "Total Blocks: " << explorer.getBlockCount() << endl;
                         cout << "Total Transactions: " << explorer.getTransactionCount() << endl;
                         cout << "Unique Addresses: " << balanceMapPtr->getAllBalances().size() << endl;
                         cout << "Total Supply: " << blockchain.getTotalSupply() << endl;
                         
-                        // Display wallet balance and transaction history
-                        cout << "\n===== Your Wallet =====" << endl;
+                        cout << "\n-------- Your Wallet --------" << endl;
                         cout << "Address: " << nodeWallet.getAddress() << endl;
                         cout << "Balance: " << explorer.getAddressBalance(nodeWallet.getAddress()) << endl;
                         
@@ -350,7 +403,7 @@ int main(int argc, char* argv[]) {
                     if (dbPtr) {
                         Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
                         
-                        cout << "===== Blockchain Statistics =====" << endl;
+                        cout << "-------- Blockchain Statistics --------" << endl;
                         cout << "Total Blocks: " << explorer.getBlockCount() << endl;
                         cout << "Total Transactions: " << explorer.getTransactionCount() << endl;
                         cout << "Unique Addresses: " << balanceMapPtr->getAllBalances().size() << endl;
@@ -364,7 +417,7 @@ int main(int argc, char* argv[]) {
                         sort(balanceList.begin(), balanceList.end(), 
                             [](const auto& a, const auto& b) { return a.second > b.second; });
                         
-                        cout << "\n===== Top 5 Richest Addresses =====" << endl;
+                        cout << "\n-------- Top 5 Richest Addresses --------" << endl;
                         size_t count = min(balanceList.size(), size_t(5));
                         for (size_t i = 0; i < count; i++) {
                             cout << (i+1) << ". " << balanceList[i].first << ": " 
