@@ -1,0 +1,14 @@
+<RCC>
+  <qresource prefix="/qml">
+    <file>App.qml</file>
+    <file>Screen01.ui.qml</file>
+    <file>Dashboard.qml</file>
+    <file>BlockchainScreen.qml</file>
+    <file>MempoolScreen.qml</file>
+    <file>PeersScreen.qml</file>
+    <file>WalletScreen.qml</file>
+    <file>ExplorerScreen.qml</file>
+    <file>LogsScreen.qml</file>
+    <file>ConsoleScreen.qml</file>
+  </qresource>
+</RCC>
