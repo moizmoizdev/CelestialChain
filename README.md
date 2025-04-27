@@ -11,14 +11,44 @@ A complete implementation of a blockchain in C++ that demonstrates the core conc
 - View the entire blockchain and its contents
 - View transactions in the mempool
 - Validate the integrity of the blockchain
-- Configure mining difficulty
+- Configure mining difficulty via UI
 - Networking with peer-to-peer connections
-- Persistent storage using LevelDB
 - Persistent storage using LevelDB
 - Support for two types of nodes:
   - Full Nodes: Complete blockchain functionality with mining capabilities
   - Wallet Nodes: Transaction creation and wallet management without mining
 - Persistent wallet storage with automatic loading/saving of wallet files
+- Native cryptocurrency ($CLST) with complete tokenomics
+- Mining reward halving mechanism similar to Bitcoin
+- Interactive blockchain explorer with address and transaction lookup
+- Dynamic mining difficulty adjustment
+
+## New Features
+
+### Native Cryptocurrency ($CLST)
+- The blockchain now features a native cryptocurrency named $CLST
+- Complete tokenomics with supply management and transaction history
+- Balance tracking across all addresses with appropriate formatting
+- UI displays of balances, transactions, and total supply in $CLST
+
+### Mining Reward Halving
+- Block rewards automatically halve every 30 days
+- Initial mining reward: 50 $CLST
+- Current reward calculation based on time elapsed since genesis block
+- UI displays of current reward, number of halvings occurred, and days until next halving
+- Minimum reward floor of 0.01 $CLST to ensure continued mining incentives
+
+### Adjustable Mining Difficulty
+- Mining difficulty can be changed through the user interface (1-8)
+- Higher difficulty requires more computational work to mine blocks
+- UI displays estimated mining time based on current difficulty
+- Prevents runaway inflation by maintaining appropriate block generation times
+
+### Enhanced Blockchain Explorer
+- Improved blockchain explorer with detailed statistics
+- Top address balances display
+- Wallet transaction history with pending and confirmed transactions
+- Complete blockchain overview including supply information
 
 ## Requirements
 
