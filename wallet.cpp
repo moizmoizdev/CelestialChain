@@ -137,8 +137,8 @@ bool Wallet::sendMoney(double amount, const std::string& receiverAddress, Transa
         return false;
     }
     
-    if (amount > balance) {
-        std::cerr << "ERROR: Insufficient funds. Balance: " << balance << ", Trying to send: " << amount << std::endl;
+    if (balance < amount) {
+        std::cerr << "ERROR: Insufficient funds. Balance: " << balance << " $CLST, Trying to send: " << amount << " $CLST" << std::endl;
         return false;
     }
     
@@ -150,15 +150,15 @@ bool Wallet::sendMoney(double amount, const std::string& receiverAddress, Transa
     transaction = Transaction(address, receiverAddress, amount);
     std::cout << "  Transaction hash: " << transaction.hash << std::endl;
     
-    transaction.sign(*this);
+    transaction.sign(*this);   
     
-    // Update balance and save to INI file
+    // Update local state and save to INI file
     balance -= amount;
     saveToIniFile();
     
-    std::cout << "  Transaction created and signed successfully" << std::endl;
-    std::cout << "  New balance: " << balance << std::endl;
-    std::cout << "===== Transaction Complete =====" << std::endl;
+    std::cout << "Transaction successful!" << std::endl;
+    std::cout << "  Sent: " << amount << " $CLST to " << receiverAddress << std::endl;
+    std::cout << "  New balance: " << balance << " $CLST" << std::endl;
     
     return true;
 }
@@ -170,9 +170,8 @@ void Wallet::receiveMoney(double amount) {
     }
     
     balance += amount;
+    std::cout << "Received " << amount << " $CLST. New balance: " << balance << " $CLST" << std::endl;
     saveToIniFile();
-    
-    std::cout << "Received " << amount << " coins. New balance: " << balance << std::endl;
 }
 
 // Implement private methods

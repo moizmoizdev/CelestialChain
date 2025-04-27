@@ -63,7 +63,7 @@ bool BalanceMapping::processTransaction(const std::string& sender, const std::st
     // Verify sender has enough funds
     if (senderBalance < amount) {
         std::cerr << "Insufficient funds: " << sender << " has " << senderBalance 
-                  << " but attempted to send " << amount << std::endl;
+                  << " $CLST but attempted to send " << amount << " $CLST" << std::endl;
         return false;
     }
     
@@ -98,8 +98,8 @@ bool BalanceMapping::processTransaction(const std::string& sender, const std::st
     
     if (success) {
         std::cout << "Transaction processed successfully:" << std::endl;
-        std::cout << "- " << sender << ": " << senderBalance << " -> " << newSenderBalance << std::endl;
-        std::cout << "- " << receiver << ": " << receiverBalance << " -> " << newReceiverBalance << std::endl;
+        std::cout << "- " << sender << ": " << senderBalance << " $CLST -> " << newSenderBalance << " $CLST" << std::endl;
+        std::cout << "- " << receiver << ": " << receiverBalance << " $CLST -> " << newReceiverBalance << " $CLST" << std::endl;
     } else {
         std::cerr << "ERROR: Failed to write transaction to database" << std::endl;
     }
@@ -128,7 +128,7 @@ bool BalanceMapping::processCoinGeneration(const std::string& receiver, double a
     
     if (success) {
         std::cout << "Mining reward processed:" << std::endl;
-        std::cout << "- " << receiver << ": " << receiverBalance << " -> " << newBalance << std::endl;
+        std::cout << "- " << receiver << ": " << receiverBalance << " $CLST -> " << newBalance << " $CLST" << std::endl;
     } else {
         std::cerr << "ERROR: Failed to update balance for mining reward" << std::endl;
     }

@@ -23,46 +23,60 @@ Explorer::Explorer(Blockchain* chain, BlockchainDB* database, BalanceMapping* ba
 
 // Basic explorer menu
 void Explorer::showExplorerMenu(const std::string& currentWalletAddress) const {
-    bool running = true;
-    while (running) {
-        explorerClearScreen();
-        cout << "===== Blockchain Explorer =====" << endl;
-        cout << "1. View Latest Blocks" << endl;
-        cout << "2. Search by Block Number" << endl;
-        cout << "3. Search by Transaction Hash" << endl;
-        cout << "4. Search by Address" << endl;
+    if (!blockchain || !db || !balanceMap) {
+        std::cout << "ERROR: Explorer requires valid blockchain, database, and balance mapping" << std::endl;
+        return;
+    }
+    
+    int choice;
+    do {
+        std::cout << "\n========== Blockchain Explorer ==========\n" << std::endl;
+        std::cout << "1. View Blockchain Summary" << std::endl;
+        std::cout << "2. View Block Details" << std::endl;
+        std::cout << "3. View Transaction Details" << std::endl;
+        std::cout << "4. Search Address" << std::endl;
+        std::cout << "5. View Top Addresses by Balance" << std::endl;
+        std::cout << "6. View Latest Transactions" << std::endl;
+        std::cout << "0. Return to Main Menu" << std::endl;
+        std::cout << "\nEnter your choice: ";
         
-        // If we have a current wallet address, show as option 5
-        if (!currentWalletAddress.empty()) {
-            cout << "5. View Your Wallet Details" << endl;
+        std::cin >> choice;
+        if (std::cin.fail()) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            choice = -1;
         }
         
-        cout << "0. Exit Explorer" << endl;
-        cout << "===========================" << endl;
-        cout << "Enter your choice: ";
-        
-        int choice;
-        cin >> choice;
-        
-        // Clear input buffer
-        cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        
-        string searchQuery;
-        size_t blockNumber;
+        std::string input;
         
         switch (choice) {
             case 1:
-                explorerClearScreen();
-                displayLatestBlocks();
+                // View Blockchain Summary
+                std::cout << "\n---------- Blockchain Summary ----------" << std::endl;
+                std::cout << "Blockchain Height: " << getBlockCount() << " blocks" << std::endl;
+                std::cout << "Total Transactions: " << getTransactionCount() << std::endl;
+                std::cout << "Total Supply: " << blockchain->getTotalSupply() << " coins" << std::endl;
+                std::cout << "Current Mining Reward: " << blockchain->getCurrentMiningReward() << " coins" << std::endl;
+                std::cout << "Number of Unique Addresses: " << balanceMap->getAllBalances().size() << std::endl;
+                
+                // Display latest block info
+                if (blockchain->getChainSize() > 0) {
+                    const Block& latestBlock = blockchain->getLatestBlock();
+                    std::cout << "\nLatest Block:" << std::endl;
+                    std::cout << "  Block #" << latestBlock.blockNumber << std::endl;
+                    std::cout << "  Hash: " << latestBlock.hash << std::endl;
+                    std::cout << "  Timestamp: " << std::asctime(std::localtime(&latestBlock.timestamp));
+                    std::cout << "  Transactions: " << latestBlock.transactions.size() << std::endl;
+                }
                 break;
                 
             case 2:
                 explorerClearScreen();
                 cout << "Enter block number: ";
-                cin >> blockNumber;
+                cin >> input;
                 cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                 try {
-                    displayBlockDetails(blockNumber);
+                    displayBlockDetails(std::stoi(input));
                 } catch (const exception& e) {
                     cout << "Error: " << e.what() << endl;
                 }
@@ -71,9 +85,9 @@ void Explorer::showExplorerMenu(const std::string& currentWalletAddress) const {
             case 3:
                 explorerClearScreen();
                 cout << "Enter transaction hash: ";
-                getline(cin, searchQuery);
+                getline(cin, input);
                 try {
-                    displayTransactionDetails(searchQuery);
+                    displayTransactionDetails(input);
                 } catch (const exception& e) {
                     cout << "Error: " << e.what() << endl;
                 }
@@ -82,9 +96,9 @@ void Explorer::showExplorerMenu(const std::string& currentWalletAddress) const {
             case 4:
                 explorerClearScreen();
                 cout << "Enter address: ";
-                getline(cin, searchQuery);
+                getline(cin, input);
                 try {
-                    displayAddressDetails(searchQuery);
+                    displayAddressDetails(input);
                 } catch (const exception& e) {
                     cout << "Error: " << e.what() << endl;
                 }
@@ -97,8 +111,12 @@ void Explorer::showExplorerMenu(const std::string& currentWalletAddress) const {
                 }
                 break;
                 
+            case 6:
+                explorerClearScreen();
+                displayLatestBlocks();
+                break;
+                
             case 0:
-                running = false;
                 break;
                 
             default:
@@ -106,11 +124,11 @@ void Explorer::showExplorerMenu(const std::string& currentWalletAddress) const {
                 break;
         }
         
-        if (running && choice != 0) {
+        if (choice != 0) {
             cout << "\nPress Enter to continue...";
             cin.get();
         }
-    }
+    } while (choice != 0);
 }
 
 // Get balance for an address
@@ -154,7 +172,7 @@ size_t Explorer::getTransactionCount() const {
 void Explorer::displayAddressDetails(const std::string& address) const {
     cout << "===== Address Information =====" << endl;
     cout << "Address: " << address << endl;
-    cout << "Balance: " << getAddressBalance(address) << endl;
+    cout << "Balance: " << getAddressBalance(address) << " $CLST" << endl;
     
     // Display transactions
     cout << "\nRecent Transactions:" << endl;

@@ -40,11 +40,11 @@ bool createDirectory(const string& path) {
     return result == 0 || errno == EEXIST;
 }
 
-void printFullNodeMenu() {
+void printFullNodeMenu(const Blockchain& blockchain) {
     cout << "\n-------- Blockchain Node --------" << endl;
     cout << "1. View blockchain" << endl;
     cout << "2. View mempool" << endl;
-    cout << "3. Mine block" << endl;
+    cout << "3. Mine block (Current reward: " << blockchain.getCurrentMiningReward() << " $CLST)" << endl;
     cout << "4. Create transaction" << endl;
     cout << "5. View wallet" << endl;
     cout << "6. Connect to peer" << endl;
@@ -52,6 +52,7 @@ void printFullNodeMenu() {
     cout << "8. View connected peers" << endl;
     cout << "9. View blockchain statistics" << endl;
     cout << "10. Visit Explorer" << endl;
+    cout << "11. Change mining difficulty (current: " << blockchain.getDifficulty() << ")" << endl;
     cout << "0. Exit" << endl;
     cout << "--------------------------------------------------------=" << endl;
     cout << "Enter your choice: ";
@@ -188,7 +189,7 @@ int main(int argc, char* argv[]) {
     if (balanceMapPtr) {
         double dbBalance = 0.0;
         if (balanceMapPtr->getBalance(nodeWallet.getAddress(), dbBalance)) {
-            cout << "Synchronizing wallet balance: " << dbBalance << endl;
+            cout << "Synchronizing wallet balance: " << dbBalance << " $CLST" << endl;
             nodeWallet.synchronizeBalance(dbBalance);
         } else {
             cout << "No existing balance found for wallet in database" << endl;
@@ -252,7 +253,7 @@ int main(int argc, char* argv[]) {
         clearScreen();
         if (nodeType == NodeType::FULL_NODE)
         {
-            printFullNodeMenu();
+            printFullNodeMenu(blockchain);
         }
         else
             printWalletNodeMenu();
@@ -302,7 +303,7 @@ int main(int argc, char* argv[]) {
                     if (balanceMapPtr) {
                         double dbBalance = 0.0;
                         if (balanceMapPtr->getBalance(nodeWallet.getAddress(), dbBalance)) {
-                            cout << "Synchronizing wallet balance from database: " << dbBalance << endl;
+                            cout << "Synchronizing wallet balance from database: " << dbBalance << " $CLST" << endl;
                             nodeWallet.synchronizeBalance(dbBalance);
                         }
                     }
@@ -335,8 +336,23 @@ int main(int argc, char* argv[]) {
                     }
                 } else {
                     clearScreen();
-                    cout << "Address: " << nodeWallet.getAddress() << endl;
-                    cout << "Balance: " << nodeWallet.getBalance() << endl;
+                    if (nodeType == NodeType::FULL_NODE) {
+                        cout << "Wallet Details (Full Node):" << endl;
+                        cout << "Address: " << nodeWallet.getAddress() << endl;
+                        cout << "Balance: " << nodeWallet.getBalance() << " $CLST" << endl;
+                        cout << "Press Enter to continue..." << endl;
+                        getchar();
+                    } else if (nodeType == NodeType::WALLET_NODE) {
+                        cout << "Wallet Details (Wallet Node):" << endl;
+                        if (dbPtr) {
+                            Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
+                            explorer.displayAddressDetails(nodeWallet.getAddress());
+                        } else {
+                            cout << "Explorer requires database connection." << endl;
+                        }
+                        cout << "Press Enter to continue..." << endl;
+                        getchar();
+                    }
                 }
                 break;
             case 5:
@@ -383,7 +399,7 @@ int main(int argc, char* argv[]) {
                         cout << "Total Blocks: " << explorer.getBlockCount() << endl;
                         cout << "Total Transactions: " << explorer.getTransactionCount() << endl;
                         cout << "Unique Addresses: " << balanceMapPtr->getAllBalances().size() << endl;
-                        cout << "Total Supply: " << blockchain.getTotalSupply() << endl;
+                        cout << "Total Supply: " << blockchain.getTotalSupply() << " $CLST" << endl;
                         
                         cout << "\n-------- Your Wallet --------" << endl;
                         cout << "Address: " << nodeWallet.getAddress() << endl;
@@ -394,6 +410,16 @@ int main(int argc, char* argv[]) {
                     } else {
                         cout << "Explorer requires database connection to display statistics." << endl;
                     }
+                } else if (nodeType == NodeType::WALLET_NODE) {
+                    clearScreen();
+                    if (dbPtr) {
+                        Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
+                        explorer.displayAddressDetails(nodeWallet.getAddress());
+                    } else {
+                        cout << "Explorer requires database connection." << endl;
+                    }
+                    cout << "Press Enter to continue..." << endl;
+                    getchar();
                 }
                 break;
             case 9:
@@ -407,7 +433,19 @@ int main(int argc, char* argv[]) {
                         cout << "Total Blocks: " << explorer.getBlockCount() << endl;
                         cout << "Total Transactions: " << explorer.getTransactionCount() << endl;
                         cout << "Unique Addresses: " << balanceMapPtr->getAllBalances().size() << endl;
-                        cout << "Total Supply: " << blockchain.getTotalSupply() << endl;
+                        cout << "Total Supply: " << blockchain.getTotalSupply() << " $CLST" << endl;
+                        
+                        // Display current mining reward and halving info
+                        double currentReward = blockchain.getCurrentMiningReward();
+                        time_t currentTime = time(nullptr);
+                        double secondsSinceGenesis = difftime(currentTime, Blockchain::GENESIS_TIMESTAMP);
+                        int daysSinceGenesis = static_cast<int>(secondsSinceGenesis / (60 * 60 * 24));
+                        int numberOfHalvings = daysSinceGenesis / 30; // 30 days per halving
+                        int daysUntilNextHalving = 30 - (daysSinceGenesis % 30);
+                        
+                        cout << "Current Mining Reward: " << currentReward << " $CLST" << endl;
+                        cout << "Halvings Occurred: " << numberOfHalvings << endl;
+                        cout << "Days Until Next Halving: " << daysUntilNextHalving << endl;
                         
                         // Display top balances
                         auto balances = balanceMapPtr->getAllBalances();
@@ -421,7 +459,7 @@ int main(int argc, char* argv[]) {
                         size_t count = min(balanceList.size(), size_t(5));
                         for (size_t i = 0; i < count; i++) {
                             cout << (i+1) << ". " << balanceList[i].first << ": " 
-                                 << balanceList[i].second << endl;
+                                 << balanceList[i].second << " $CLST" << endl;
                         }
                     } else {
                         cout << "Explorer requires database connection to display statistics." << endl;
@@ -447,6 +485,28 @@ int main(int argc, char* argv[]) {
                     } else {
                         cout << "Explorer requires database connection." << endl;
                     }
+                }
+                break;
+            case 11:
+                if (nodeType == NodeType::FULL_NODE) {
+                    clearScreen();
+                    int newDifficulty;
+                    cout << "Current mining difficulty: " << blockchain.getDifficulty() << endl;
+                    cout << "Enter new mining difficulty (1-8): ";
+                    cin >> newDifficulty;
+                    
+                    // Clear input buffer
+                    cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                    
+                    // Validate input
+                    if (cin.fail()) {
+                        cin.clear();
+                        cout << "Invalid input. Difficulty not changed." << endl;
+                    } else {
+                        blockchain.setDifficulty(newDifficulty);
+                    }
+                } else {
+                    cout << "Only full nodes can change mining difficulty." << endl;
                 }
                 break;
             case 0:

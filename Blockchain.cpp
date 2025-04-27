@@ -1,15 +1,53 @@
 #include "Blockchain.h"
 #include <iostream>
+#include <cmath> // For pow function
 
+// Define the halving interval constant 
+const int Blockchain::HALVING_INTERVAL_DAYS = 30;
+
+// Update the constants with the new initial reward name
+const time_t     Blockchain::GENESIS_TIMESTAMP = 1745026508;
+const int Blockchain::GENESIS_NONCE     =  27701;
+const std::string Blockchain::GENESIS_HASH      = "0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80";
+const double Blockchain::INITIAL_MINING_REWARD = 50.0; // Initial mining reward of 50 coins per block
+
+// Calculate the current mining reward based on time since genesis
+double Blockchain::calculateCurrentMiningReward() const {
+    // Get current time
+    time_t currentTime = time(nullptr);
+    
+    // Calculate days since genesis
+    double secondsSinceGenesis = difftime(currentTime, GENESIS_TIMESTAMP);
+    int daysSinceGenesis = static_cast<int>(secondsSinceGenesis / (60 * 60 * 24));
+    
+    // Calculate number of halvings that should have occurred
+    int numberOfHalvings = daysSinceGenesis / HALVING_INTERVAL_DAYS;
+    
+    // Calculate current reward: initial_reward / (2^numberOfHalvings)
+    double currentReward = INITIAL_MINING_REWARD;
+    for (int i = 0; i < numberOfHalvings; i++) {
+        currentReward /= 2.0;
+    }
+    
+    // Ensure minimum reward of 0.01 coins
+    if (currentReward < 0.01) {
+        currentReward = 0.01;
+    }
+    
+    return currentReward;
+}
+
+// Public method to get the current mining reward
+double Blockchain::getCurrentMiningReward() const {
+    return calculateCurrentMiningReward();
+}
 
 Blockchain::Blockchain(int difficulty) : difficulty(difficulty), db(nullptr), balanceMap(nullptr) {
-    // genesis block
     std::vector<Transaction> genesisTransactions;
     Transaction genesisTx("Genesis", "Genesis", 0);
     genesisTx.hash = genesisTx.calculateHash();
     genesisTransactions.push_back(genesisTx);
     
-    // prev hash for genesis block will be 0
     Block genesisBlock(0, genesisTransactions, "0x0", difficulty);
     genesisBlock.timestamp = GENESIS_TIMESTAMP;
     genesisBlock.nonce     = GENESIS_NONCE;
@@ -22,19 +60,16 @@ Blockchain::Blockchain(int difficulty) : difficulty(difficulty), db(nullptr), ba
 void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
     Block newBlock(chain.size(), transactions, getLatestBlock().hash, difficulty);
     
-    // Validate the transactions in the new block
     if (!newBlock.validateTransactions()) {
         throw std::runtime_error("ERROR: Block contains invalid transactions");
     }
     
     chain.push_back(newBlock);
     
-    // Update balances for this block
     if (balanceMap) {
         updateBalancesForBlock(newBlock);
     }
     
-    // Persist the block to database
     if (db && !db->saveBlock(newBlock)) {
         std::cerr << "Failed to save block to database: " << db->getLastError() << std::endl;
     }
@@ -43,7 +78,6 @@ void Blockchain::addBlock(const std::vector<Transaction>& transactions) {
     std::cout << "Hash: " << newBlock.hash << std::endl;
 }
 
-// Push a block received from the network (doesnt remine)
 void Blockchain::addExistingBlock(const Block& block) {
     if(block.previousHash != getLatestBlock().hash && block.blockNumber!=getLatestBlock().blockNumber){
         throw std::runtime_error("Blockchain integrity compromised. Previous hash mismatch. Previous hash: " + block.previousHash + " Current hash: " + getLatestBlock().hash);
@@ -57,19 +91,16 @@ void Blockchain::addExistingBlock(const Block& block) {
         throw std::runtime_error("Blockchain integrity compromised. Block hash mismatch even though BlockNumber was same. Block hash: " + block.hash + " Current hash: " + getLatestBlock().hash);
     }
     
-    // Validate the transactions in the block
     if (!block.validateTransactions()) {
         throw std::runtime_error("ERROR: Received block contains invalid transactions");
     }
     
     chain.push_back(block);
     
-    // Update balances for this block
     if (balanceMap) {
         updateBalancesForBlock(block);
     }
     
-    // Persist the block to database
     if (db && !db->saveBlock(block)) {
         std::cerr << "Failed to save block to database: " << db->getLastError() << std::endl;
     }
@@ -79,7 +110,6 @@ void Blockchain::addExistingBlock(const Block& block) {
 }
 
 void Blockchain::addTransaction(const Transaction& transaction) {
-    // Verify the transaction has sufficient balance
     if (balanceMap && !verifyTransactionBalance(transaction)) {
         std::cerr << "Transaction rejected: Insufficient balance for " << transaction.sender << std::endl;
         return;
@@ -89,10 +119,8 @@ void Blockchain::addTransaction(const Transaction& transaction) {
         if (old.hash == transaction.hash) return;
     }
     
-    // Add to mempool
     mempool.push_back(transaction);
     
-    // Persist transaction to database
     if (db && !db->saveTransaction(transaction)) {
         std::cerr << "Failed to save transaction to database: " << db->getLastError() << std::endl;
     }
@@ -105,7 +133,6 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
     // Store the wallets for future use
     wallets = walletList;
     
-    // Check if this is a wallet node trying to mine
     if (nodeType == NodeType::WALLET_NODE) {
         throw std::runtime_error("ERROR: Wallet nodes cannot mine blocks.");
     }
@@ -114,7 +141,6 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
         throw std::runtime_error("ERROR: No wallet provided for mining reward.");
     }
     
-    // Count how many empty blocks we've mined so far
     int emptyBlockCount = 0;
     for (const auto& block : chain) {
         // Count blocks that only have one transaction (the coinbase/reward)
@@ -142,11 +168,14 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
         }
     }
     
+    // Calculate the current mining reward based on halving schedule
+    double currentReward = calculateCurrentMiningReward();
+    
     // Create a copy of mempool since we'll be adding the reward transaction
     std::vector<Transaction> blockTransactions = mempool;
     
     // Create a mining reward transaction (coinbase)
-    Transaction rewardTx("Genesis", minerAddress, MINING_REWARD);
+    Transaction rewardTx("Genesis", minerAddress, currentReward);
     rewardTx.hash = rewardTx.calculateHash();
     
     // Add the reward transaction to the block transactions
@@ -159,7 +188,18 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
     } else {
         std::cout << "Mining new block with " << blockTransactions.size() << " transactions (including mining reward)..." << std::endl;
     }
-    std::cout << "Mining reward of " << MINING_REWARD << " coins will be sent to " << minerAddress << std::endl;
+    std::cout << "Mining reward of " << currentReward << " $CLST will be sent to " << minerAddress << std::endl;
+    
+    // Calculate and print halving information
+    time_t currentTime = time(nullptr);
+    double secondsSinceGenesis = difftime(currentTime, GENESIS_TIMESTAMP);
+    int daysSinceGenesis = static_cast<int>(secondsSinceGenesis / (60 * 60 * 24));
+    int numberOfHalvings = daysSinceGenesis / HALVING_INTERVAL_DAYS;
+    int daysUntilNextHalving = HALVING_INTERVAL_DAYS - (daysSinceGenesis % HALVING_INTERVAL_DAYS);
+    
+    std::cout << "Current block reward: " << currentReward << " $CLST (after " << numberOfHalvings 
+              << " halvings)" << std::endl;
+    std::cout << "Next halving in " << daysUntilNextHalving << " days" << std::endl;
     
     // Create and mine the new block with all transactions including the reward
     Block newBlock(chain.size(), blockTransactions, getLatestBlock().hash, difficulty);
@@ -194,7 +234,7 @@ Block& Blockchain::mineBlock(std::vector<Wallet*>& walletList, NodeType nodeType
     // If no balanceMap, fall back to the old method of updating wallets directly
     else {
         // Directly update miner's wallet with the reward
-        minerWallet->receiveMoney(MINING_REWARD);
+        minerWallet->receiveMoney(currentReward);
         
         // And process other transactions
         for (const auto& tx : mempool) {
@@ -343,8 +383,8 @@ void Blockchain::updateBalancesForBlock(const Block& block) {
             balanceMap->getBalance(tx.receiver, receiverBalance);
             
             std::cout << "Updated balances:" << std::endl;
-            std::cout << "- " << tx.sender << ": " << senderBalance << std::endl;
-            std::cout << "- " << tx.receiver << ": " << receiverBalance << std::endl;
+            std::cout << "- " << tx.sender << ": " << senderBalance << " $CLST" << std::endl;
+            std::cout << "- " << tx.receiver << ": " << receiverBalance << " $CLST" << std::endl;
         } else {
             std::cerr << "Failed to update balances for transaction " << tx.hash << std::endl;
             failedTransactions++;
@@ -379,7 +419,7 @@ bool Blockchain::verifyTransactionBalance(const Transaction& tx) const {
     // Check if sender has enough balance
     if (balance < tx.amount) {
         std::cerr << "Error: Insufficient balance. " << tx.sender 
-                  << " has " << balance << " but wants to send " << tx.amount << std::endl;
+                  << " has " << balance << " $CLST but wants to send " << tx.amount << " $CLST" << std::endl;
         return false;
     }
     
@@ -561,7 +601,34 @@ double Blockchain::getTotalSupply() const {
     return totalSupply;
 }
 
-const time_t     Blockchain::GENESIS_TIMESTAMP = 1745026508;
-const int Blockchain::GENESIS_NONCE     =  27701;
-const std::string Blockchain::GENESIS_HASH      = "0x0000eb99d08f42f3c322b891f18212c85aa05365166964973a56d03e7da36f80";
-const double Blockchain::MINING_REWARD   = 50.0; // 50 coins per block
+// Add these methods to get and set difficulty
+int Blockchain::getDifficulty() const {
+    return difficulty;
+}
+
+void Blockchain::setDifficulty(int newDifficulty) {
+    // Ensure difficulty is at least 1 and at most 8 (to prevent excessive mining times)
+    if (newDifficulty < 1) {
+        std::cout << "Warning: Difficulty cannot be less than 1. Setting to 1." << std::endl;
+        difficulty = 1;
+    } else if (newDifficulty > 8) {
+        std::cout << "Warning: Difficulty cannot be more than 8. Setting to 8." << std::endl;
+        difficulty = 8;
+    } else {
+        difficulty = newDifficulty;
+    }
+    
+    std::cout << "Mining difficulty changed to " << difficulty << std::endl;
+    std::cout << "This means blocks require hashes with " << difficulty << " leading zeros" << std::endl;
+    
+    // Calculate an estimate of mining time
+    double estimatedTime = std::pow(16, difficulty) / 10000; // Assuming 10K hashes/sec
+    std::cout << "Estimated mining time: ";
+    if (estimatedTime < 60) {
+        std::cout << estimatedTime << " seconds" << std::endl;
+    } else if (estimatedTime < 3600) {
+        std::cout << (estimatedTime / 60) << " minutes" << std::endl;
+    } else {
+        std::cout << (estimatedTime / 3600) << " hours" << std::endl;
+    }
+}

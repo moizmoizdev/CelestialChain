@@ -19,13 +19,19 @@ private:
     int difficulty;
     BlockchainDB* db;  // Database connection
     BalanceMapping* balanceMap; // Balance tracking
+    
+    // Calculate the current mining reward based on time since genesis
+    double calculateCurrentMiningReward() const;
+    
+    // Number of days between halvings
+    static const int HALVING_INTERVAL_DAYS;
 
 public:
     // Genesis block constants - moved to public section
     static const time_t GENESIS_TIMESTAMP;
     static const int     GENESIS_NONCE;
     static const std::string GENESIS_HASH;
-    static const double MINING_REWARD;   // Mining reward constant
+    static const double INITIAL_MINING_REWARD;   // Initial mining reward constant
     
     Blockchain(int difficulty = 4) ;
     
@@ -46,8 +52,13 @@ public:
     void printMempool() const;
     bool isValidChain() const;
     
+    // Get and set difficulty
+    int getDifficulty() const;
+    void setDifficulty(int newDifficulty);
+    
     // Statistics methods
     double getTotalSupply() const;
+    double getCurrentMiningReward() const;
 
     // Database operations
     void setDatabase(BlockchainDB* database);
