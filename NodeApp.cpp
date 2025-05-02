@@ -12,6 +12,7 @@
 #include "Types.h"
 #include "balanceMapping.h"
 #include "explorer.h"
+#include "api/CelestialChainAPI.h" // Add API include
 #include <stdexcept>
 #include <direct.h> // For _mkdir on Windows
 using namespace std;
@@ -83,6 +84,7 @@ int main(int argc, char* argv[]) {
     NodeType nodeType = NodeType::FULL_NODE;
     int difficulty = 4;
     bool cleanStart = false;
+    int apiPort = 8080; // Default API port
 
     for (int i = 1; i < argc; ++i) {
         string arg = argv[i];
@@ -101,12 +103,15 @@ int main(int argc, char* argv[]) {
             difficulty = stoi(argv[++i]);
         } else if (arg == "--clean" || arg == "--fresh") {
             cleanStart = true;
+        } else if (arg == "--api-port" && i + 1 < argc) {
+            apiPort = stoi(argv[++i]);
         } else if (arg == "--help") {
             cout << "Usage: " << argv[0] << " [OPTIONS]\n";
             cout << "  --host HOST       Set the host address\n";
             cout << "  --port PORT       Set the port number\n";
             cout << "  --type TYPE       Set the node type (full or wallet)\n";
             cout << "  --difficulty DIFF Set the mining difficulty\n";
+            cout << "  --api-port PORT   Set the API port (default: 8080)\n";
             cout << "  --clean           Start with a fresh blockchain (ignore existing database)\n";
             cout << "  --help            Display this help message\n";
             return 0;
@@ -219,10 +224,17 @@ int main(int argc, char* argv[]) {
     // Start network services
     try {
         networkManager.start();
+        cout << "Network services started successfully." << endl;
     } catch (const exception& e) {
         cout << "Failed to start network services: " << e.what() << endl;
         return 1;
     }
+
+    // Initialize and start the API server
+    cout << "Starting API server on port " << apiPort << "..." << endl;
+    CelestialChainAPI api(blockchain, nodeWallet, networkManager, dbPtr, balanceMapPtr, nodeType, apiPort);
+    api.start();
+    cout << "API server started successfully. Access at http://localhost:" << apiPort << "/api/" << endl;
 
     // peers_discovery_list is to connect to a few known peers for peer discovery
     // later, it propagates when a network is established
@@ -524,6 +536,9 @@ int main(int argc, char* argv[]) {
 
     // Clean shutdown
     networkManager.stop();
+
+    // When the application is shutting down, stop the API server
+    api.stop();
 
     return 0;
 }

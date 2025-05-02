@@ -1,6 +1,15 @@
 #ifndef NETWORK_NODE_H
 #define NETWORK_NODE_H
 
+// Enable header-only Boost
+#define BOOST_ASIO_HEADER_ONLY
+#define BOOST_SYSTEM_NO_LIB
+#define BOOST_DATE_TIME_NO_LIB
+#define BOOST_REGEX_NO_LIB
+#define BOOST_THREAD_NO_LIB
+#define BOOST_CHRONO_NO_LIB
+#define BOOST_ATOMIC_NO_LIB
+
 // Define this to keep the global placeholders (_1, _2, etc.)
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 
