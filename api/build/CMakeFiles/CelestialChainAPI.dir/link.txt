@@ -1,0 +1,2 @@
+D:\Strawberry\c\bin\ar.exe qc libCelestialChainAPI.a CMakeFiles/CelestialChainAPI.dir/CelestialChainAPI.cpp.obj
+D:\Strawberry\c\bin\ranlib.exe libCelestialChainAPI.a
