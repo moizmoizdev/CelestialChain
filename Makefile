@@ -17,7 +17,7 @@ LDFLAGS = -L"$(OPENSSL_LIB_PATH)" -L"$(LEVELDB_LIB_PATH)" -pthread -lws2_32 -lms
 TARGET_NODE = blockchain_node
 
 # Source files for the node application
-NODE_SRCS = NodeApp.cpp NetworkNode.cpp Blockchain.cpp Block.cpp Transaction.cpp wallet.cpp sha.cpp crypto_utils.cpp BlockchainDB.cpp balanceMapping.cpp explorer.cpp
+NODE_SRCS = NodeApp.cpp NetworkNode.cpp Blockchain.cpp Block.cpp Transaction.cpp wallet.cpp sha.cpp crypto_utils.cpp BlockchainDB.cpp balanceMapping.cpp explorer.cpp api/CelestialChainAPI.cpp
 
 # Object files
 NODE_OBJS = $(NODE_SRCS:.cpp=.o)
@@ -25,13 +25,20 @@ NODE_OBJS = $(NODE_SRCS:.cpp=.o)
 all: $(TARGET_NODE)
 
 $(TARGET_NODE): $(NODE_OBJS)
-	$(CC) -o $(TARGET_NODE) $(NODE_OBJS) $(LDFLAGS) $(LEVELDB_STATIC)
+	$(CC) -o $(TARGET_NODE) $(NODE_OBJS) $(LDFLAGS) $(LEVELDB_STATIC) 
 
 %.o: %.cpp
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Special rule for files in subdirectories
+api/%.o: api/%.cpp
+	if not exist api mkdir api
+	$(CC) $(CFLAGS) -c $< -o $@
+
 clean:
-	del $(NODE_OBJS) $(TARGET_NODE).exe
+	del *.o
+	if exist api\*.o del api\*.o
+	if exist $(TARGET_NODE).exe del $(TARGET_NODE).exe
 
 run-node: $(TARGET_NODE)
 	./$(TARGET_NODE)

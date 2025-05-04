@@ -404,23 +404,14 @@ int main(int argc, char* argv[]) {
             case 8:
                 if (nodeType == NodeType::FULL_NODE) {
                     clearScreen();
-                    if (dbPtr) {
-                        Explorer explorer(&blockchain, dbPtr, balanceMapPtr);
-                        
-                        cout << "-------- Blockchain Statistics --------" << endl;
-                        cout << "Total Blocks: " << explorer.getBlockCount() << endl;
-                        cout << "Total Transactions: " << explorer.getTransactionCount() << endl;
-                        cout << "Unique Addresses: " << balanceMapPtr->getAllBalances().size() << endl;
-                        cout << "Total Supply: " << blockchain.getTotalSupply() << " $CLST" << endl;
-                        
-                        cout << "\n-------- Your Wallet --------" << endl;
-                        cout << "Address: " << nodeWallet.getAddress() << endl;
-                        cout << "Balance: " << explorer.getAddressBalance(nodeWallet.getAddress()) << endl;
-                        
-                        // Display transactions directly
-                        explorer.displayAddressDetails(nodeWallet.getAddress());
+                    cout << "-------- Connected Peers --------" << endl;
+                    auto peers = networkManager.getConnectedPeers();
+                    if (peers.empty()) {
+                        cout << "No peers connected." << endl;
                     } else {
-                        cout << "Explorer requires database connection to display statistics." << endl;
+                        for (auto& p : peers)
+                            cout << p.id << " @ " << p.address << ":" << p.port << " (Type: " 
+                                 << (p.type == NodeType::FULL_NODE ? "Full Node" : "Wallet Node") << ")" << endl;
                     }
                 } else if (nodeType == NodeType::WALLET_NODE) {
                     clearScreen();
@@ -446,6 +437,10 @@ int main(int argc, char* argv[]) {
                         cout << "Total Transactions: " << explorer.getTransactionCount() << endl;
                         cout << "Unique Addresses: " << balanceMapPtr->getAllBalances().size() << endl;
                         cout << "Total Supply: " << blockchain.getTotalSupply() << " $CLST" << endl;
+                        
+                        cout << "\n-------- Your Wallet --------" << endl;
+                        cout << "Address: " << nodeWallet.getAddress() << endl;
+                        cout << "Balance: " << explorer.getAddressBalance(nodeWallet.getAddress()) << endl;
                         
                         // Display current mining reward and halving info
                         double currentReward = blockchain.getCurrentMiningReward();

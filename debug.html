@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blockchain API Debug</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #results {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            min-height: 200px;
+            white-space: pre-wrap;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Blockchain API Debug Tool</h1>
+    
+    <div>
+        <label for="apiUrl">API Base URL:</label>
+        <input type="text" id="apiUrl" value="http://localhost:8080" style="width: 300px;">
+    </div>
+    
+    <div>
+        <label for="endpoint">Endpoint:</label>
+        <select id="endpoint">
+            <option value="/api/statistics">Statistics</option>
+            <option value="/api/explorer/latest-blocks?limit=5">Latest Blocks</option>
+            <option value="/api/explorer/latest-transactions?limit=5">Latest Transactions</option>
+            <option value="/api/wallet">Wallet</option>
+            <option value="/api/peers">Peers</option>
+            <option value="/api/mempool">Mempool</option>
+        </select>
+    </div>
+    
+    <div>
+        <button id="fetchXhr">Fetch (XHR)</button>
+        <button id="fetchApi">Fetch (Fetch API)</button>
+        <button id="fetchCors">Fetch (with CORS Mode)</button>
+    </div>
+    
+    <div id="results">Results will appear here...</div>
+    
+    <script>
+        // Helper to log to the results div
+        function log(message, isError = false) {
+            const resultsDiv = document.getElementById('results');
+            const line = document.createElement('div');
+            line.textContent = message;
+            if (isError) {
+                line.className = 'error';
+            } else if (message.includes('SUCCESS')) {
+                line.className = 'success';
+            }
+            resultsDiv.appendChild(line);
+        }
+        
+        // Clear results
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        // Get the full URL for the request
+        function getFullUrl() {
+            const baseUrl = document.getElementById('apiUrl').value.trim();
+            const endpoint = document.getElementById('endpoint').value;
+            return `${baseUrl}${endpoint}`;
+        }
+        
+        // XHR request
+        document.getElementById('fetchXhr').addEventListener('click', function() {
+            clearResults();
+            const url = getFullUrl();
+            log(`Making XHR request to: ${url}`);
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', url);
+            xhr.setRequestHeader('Accept', 'application/json');
+            
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    log(`SUCCESS: Status ${xhr.status}`);
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        log(`Response: ${JSON.stringify(data, null, 2)}`);
+                    } catch (e) {
+                        log(`Error parsing response: ${e.message}`, true);
+                        log(`Raw response: ${xhr.responseText.substring(0, 200)}...`);
+                    }
+                } else {
+                    log(`ERROR: Status ${xhr.status}`, true);
+                    log(xhr.responseText);
+                }
+            };
+            
+            xhr.onerror = function() {
+                log('Network error occurred', true);
+            };
+            
+            xhr.send();
+        });
+        
+        // Fetch API request
+        document.getElementById('fetchApi').addEventListener('click', function() {
+            clearResults();
+            const url = getFullUrl();
+            log(`Making Fetch API request to: ${url}`);
+            
+            fetch(url, {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => {
+                log(`Received response with status: ${response.status}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.text();
+            })
+            .then(text => {
+                log(`Raw response: ${text.substring(0, 200)}...`);
+                try {
+                    const data = JSON.parse(text);
+                    log(`SUCCESS: Parsed JSON response`);
+                    log(`Response: ${JSON.stringify(data, null, 2)}`);
+                } catch (e) {
+                    log(`Error parsing response: ${e.message}`, true);
+                }
+            })
+            .catch(error => {
+                log(`ERROR: ${error.message}`, true);
+            });
+        });
+        
+        // Fetch API with CORS mode
+        document.getElementById('fetchCors').addEventListener('click', function() {
+            clearResults();
+            const url = getFullUrl();
+            log(`Making Fetch API request with CORS mode to: ${url}`);
+            
+            fetch(url, {
+                method: 'GET',
+                mode: 'cors',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => {
+                log(`Received response with status: ${response.status}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.text();
+            })
+            .then(text => {
+                log(`Raw response: ${text.substring(0, 200)}...`);
+                try {
+                    const data = JSON.parse(text);
+                    log(`SUCCESS: Parsed JSON response`);
+                    log(`Response: ${JSON.stringify(data, null, 2)}`);
+                } catch (e) {
+                    log(`Error parsing response: ${e.message}`, true);
+                }
+            })
+            .catch(error => {
+                log(`ERROR: ${error.message}`, true);
+            });
+        });
+    </script>
+</body>
+</html> 
