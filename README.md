@@ -49,6 +49,37 @@ A complete implementation of a blockchain in C++ that demonstrates the core conc
 - Top address balances display
 - Wallet transaction history with pending and confirmed transactions
 - Complete blockchain overview including supply information
+## Screenshots
+
+### Blockchain View
+![Blockchain View](/web/blockchain-ui/images/blockchain.jpg)
+
+### Create Transaction
+![Create Transaction](/web/blockchain-ui/images/create_tx.jpg)
+
+### Dashboard
+![Dashboard](/web/blockchain-ui/images/dashboard.jpg)
+
+### Explorer
+![Explorer](/web/blockchain-ui/images/explorer.jpg)
+
+### Mempool
+![Mempool](/web/blockchain-ui/images/mempool.jpg)
+
+### Mine Block
+![Mine Block](/web/blockchain-ui/images/mineblock.jpg)
+
+### Peer Connections
+![Peer Connections](/web/blockchain-ui/images/peers.jpg)
+
+### Synchronization
+![Synchronization](/web/blockchain-ui/images/synchronize.jpg)
+
+### Transaction History
+![Transaction History](/web/blockchain-ui/images/tx_history.jpg)
+
+### Wallet View
+![Wallet View](/web/blockchain-ui/images/wallet.jpg)
 
 ## Requirements
 
