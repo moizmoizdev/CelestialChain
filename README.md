@@ -1,54 +1,40 @@
 # CelestialChain
 
-A complete implementation of a blockchain in C++ that demonstrates the core concepts of blockchain technology, including networking and distributed nodes.
+CelestialChain is a complete blockchain system implemented in C++ with a modern React-based UI. It demonstrates the core principles of blockchain technology including networking, wallet management, mining, and real-time interactions across distributed nodes. This project is ideal for educational exploration, blockchain prototyping, and real-world decentralized architecture simulation.
 
-## Features
+---
 
-- Create transactions with sender, receiver, and amount information
-- Manage wallets with private/public key pairs and address generation
-- Send money between wallets and track balances
-- Mine new blocks with pending transactions
-- View the entire blockchain and its contents
-- View transactions in the mempool
-- Validate the integrity of the blockchain
-- Configure mining difficulty via UI
-- Networking with peer-to-peer connections
-- Persistent storage using LevelDB
-- Support for two types of nodes:
-  - Full Nodes: Complete blockchain functionality with mining capabilities
-  - Wallet Nodes: Transaction creation and wallet management without mining
-- Persistent wallet storage with automatic loading/saving of wallet files
-- Native cryptocurrency ($CLST) with complete tokenomics
-- Mining reward halving mechanism similar to Bitcoin
-- Interactive blockchain explorer with address and transaction lookup
-- Dynamic mining difficulty adjustment
+## Core Features
 
-## New Features
+### Blockchain Backend (C++)
+- Create and broadcast transactions with sender, receiver, and amount
+- Wallet management with public/private key generation and address derivation
+- Full and Wallet Node support:
+  - Full Nodes can mine blocks and validate chain integrity
+  - Wallet Nodes handle transaction creation and balance tracking
+- Mining with configurable difficulty and reward halving every 30 days (like Bitcoin)
+- Persistent data storage using LevelDB for blockchain and wallets
+- Peer-to-peer networking using Boost.Asio
+- Mempool for pending transactions
+- Longest chain rule validation
+- Interactive CLI-based blockchain explorer
 
-### Native Cryptocurrency ($CLST)
-- The blockchain now features a native cryptocurrency named $CLST
-- Complete tokenomics with supply management and transaction history
-- Balance tracking across all addresses with appropriate formatting
-- UI displays of balances, transactions, and total supply in $CLST
+### Native Cryptocurrency: $CLST
+- Tokenomics built-in with reward schedule
+- Real-time balance tracking
+- Explorer UI showing top holders and total supply
 
-### Mining Reward Halving
-- Block rewards automatically halve every 30 days
-- Initial mining reward: 50 $CLST
-- Current reward calculation based on time elapsed since genesis block
-- UI displays of current reward, number of halvings occurred, and days until next halving
-- Minimum reward floor of 0.01 $CLST to ensure continued mining incentives
+### Blockchain Explorer UI (React)
+- Dashboard with network stats and mining status
+- Real-time mempool view
+- Wallet interface with transaction history
+- Send transactions from wallet
+- Peer network management
+- Blockchain viewer: blocks, transactions, balances
+- Dynamic node switching and multi-node monitoring
+- Adjustable mining difficulty and sync status view
 
-### Adjustable Mining Difficulty
-- Mining difficulty can be changed through the user interface (1-8)
-- Higher difficulty requires more computational work to mine blocks
-- UI displays estimated mining time based on current difficulty
-- Prevents runaway inflation by maintaining appropriate block generation times
-
-### Enhanced Blockchain Explorer
-- Improved blockchain explorer with detailed statistics
-- Top address balances display
-- Wallet transaction history with pending and confirmed transactions
-- Complete blockchain overview including supply information
+---
 ## Screenshots
 
 ### Blockchain View
@@ -81,7 +67,7 @@ A complete implementation of a blockchain in C++ that demonstrates the core conc
 ### Wallet View
 ![Wallet View](/web/blockchain-ui/images/wallet.jpg)
 
-## Requirements
+## Backend Requirements
 
 - C++17 compiler (for structured bindings)
 - C++17 compiler (for structured bindings)
@@ -310,60 +296,85 @@ The blockchain maintains wallet persistence across sessions:
    - Each node maintains its own unique wallet
    - This allows testing transfers between nodes on the same machine
 
-## Testing the Longest Chain Algorithm
+## Running the UI Based Application
 
-The blockchain implements the "longest chain rule" based on accumulated proof of work. To test this functionality:
+### Single Instance
 
-1. **Start separate node groups**:
-   ```bash
-   # Start first node
-   ./blockchain_node --port 8000 --type full --difficulty 4
-   
-   # Start second node (don't connect it to first yet)
-   ./blockchain_node --port 9000 --type full --difficulty 4
-   ```
+To run a single instance of the UI connecting to a default blockchain node (localhost:8080):
 
-2. **Create chains of different lengths**:
-   - In first node (port 8000), mine several blocks (3-4)
-   - In second node (port 9000), mine 1-2 blocks
+```
+npm start
+```
 
-3. **Connect the nodes**:
-   - From either node, choose the option to connect to the other node
+This will start the application at http://localhost:3000.
 
-4. **Observe chain synchronization**:
-   - The node with the shorter chain should adopt the longer chain
-   - Check logs to see chain replacement process
+### Multiple Instances
 
-5. **Advanced test - Different Difficulties**:
-   ```bash
-   # Start first node with higher difficulty
-   ./blockchain_node --port 8000 --type full --difficulty 6
-   
-   # Start second node with lower difficulty  
-   ./blockchain_node --port 9000 --type full --difficulty 3
-   ```
-   - Mine more blocks on second node (due to lower difficulty)
-   - Mine fewer blocks on first node
-   - Connect them and observe whether the chain with more total work (sum of 2^difficulty) is chosen
-   
-## Database Persistence
+The application supports connecting to multiple blockchain nodes simultaneously by running multiple UI instances. This is useful for:
 
-The blockchain uses LevelDB for persistent storage of all blocks and transactions:
+- Monitoring different nodes in your network
+- Using both full nodes and wallet nodes
+- Testing peer-to-peer communication
 
-1. **Database Location**:
-   - Each node stores data in a separate directory based on host:port
-   - Default location: `./Storage_127.0.0.1_PORT/`
+#### Using PS Script (Windows)
 
-2. **Clean Start**:
-   - To start with a clean blockchain: `./blockchain_node --clean`
-   - Or for multiple nodes: `./run_network.bat --clean`
+1. Run the PS script to launch multiple UI instances:
 
-3. **Testing Persistence**:
-   - Start nodes and mine blocks
-   - Exit all nodes
-   - Restart the nodes without the `--clean` flag
-   - Verify that the blockchain state is preserved
+```
+.\start-multi-ui
+```
 
-4. **Database Verification**:
-   - The system automatically verifies database integrity on startup
-   - Detects and attempts to repair corrupted entries 
+This will:
+- Open separate terminal windows for each UI instance
+- Configure each instance to connect to a different blockchain node API
+- Make each UI instance available at a different port
+
+#### Using Node.js Script
+
+1. Run the Node.js script with an optional port parameter:
+
+```
+node run-instances.js [port]
+```
+
+Without specifying a port, it will run the first configured instance.
+
+For example:
+- `node run-instances.js 3000` - Starts a UI instance on port 3000 connecting to the API on port 8080
+- `node run-instances.js 3001` - Starts a UI instance on port 3001 connecting to the API on port 8090
+
+#### Manually Configuring Instances
+
+You can also manually configure each instance by:
+
+1. Creating a `.env.{port}` file with the appropriate configuration
+2. Updating the `setupProxy.js` file to point to the desired API port
+3. Starting the application with specific environment variables:
+
+```
+PORT=3001 REACT_APP_API_PORT=8090 npm start
+```
+
+## Node Connectivity
+
+The UI allows you to:
+- Switch between different nodes within the same UI instance using the node selector in the header
+- Add, edit, and remove node connections
+- Test connections to verify node availability
+
+By default, the following nodes are configured:
+- Local Node 1 (http://localhost:8080/api)
+- Local Node 2 (http://localhost:8081/api)
+- Local Node 3 (http://localhost:8085/api)
+- Local Wallet (http://localhost:8090/api)
+
+## Development
+
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+
+### Available Scripts
+
+- `npm start` - Runs the app in development mode
+- `npm test` - Launches the test runner
+- `npm run build` - Builds the app for production
+
