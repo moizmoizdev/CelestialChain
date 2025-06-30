@@ -1,4 +1,4 @@
-# Blockchain Demo
+# CelestialChain
 
 A complete implementation of a blockchain in C++ that demonstrates the core concepts of blockchain technology, including networking and distributed nodes.
 
